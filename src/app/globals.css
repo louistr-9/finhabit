@@ -1,26 +1,79 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
+  /* Colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  
+  --color-emerald-teal: var(--emerald-teal);
+  --color-deep-violet: var(--deep-violet);
+  --color-slate-50: var(--slate-50);
+  
+  --color-border: var(--border);
+
+  /* Fonts */
+  --font-sans: 'Inter', sans-serif;
+  --font-heading: 'Outfit', sans-serif;
+  
+  /* Radii */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
+:root {
+  --background: hsl(210, 40%, 98%); /* Trang chủ/Slate rất nhạt */
+  --foreground: hsl(222, 47%, 11%);
+  
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(222, 47%, 11%);
+  
+  /* Brand Colors */
+  --emerald-teal: hsl(175, 84%, 32%); /* #0D9488 */
+  --deep-violet: hsl(263, 70%, 50%); /* #6D28D9 */
+  --slate-50: hsl(210, 40%, 98%);
+  
+  --border: hsl(214, 32%, 91%);
+  --radius: 1rem;
+}
+
+/* Dark mode configuration for the future */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: hsl(222, 47%, 11%);
+    --foreground: hsl(210, 40%, 98%);
+    --card: hsl(222, 47%, 15%);
+    --card-foreground: hsl(210, 40%, 98%);
+    --border: hsl(217, 32%, 22%);
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Soft Shadows - override standard tailwind shadow or create utility */
+.shadow-soft {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
+}
+.shadow-soft-hover:hover {
+  box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.06), 0 4px 8px -4px rgba(0, 0, 0, 0.04);
 }
