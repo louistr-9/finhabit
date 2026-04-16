@@ -1,12 +1,9 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/utils/supabase/server';
-import { Sidebar } from '@/components/Sidebar';
+import DashboardClient from '../DashboardClient';
+import { getDashboardOverview } from './actions';
 
-export default async function DashboardLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -14,18 +11,18 @@ export default async function DashboardLayout({
     redirect('/login');
   }
 
+  const overviewData = await getDashboardOverview();
+
   const displayName = user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'Người dùng';
   const avatarUrl = user.user_metadata?.avatar_url ?? null;
   const email = user.email ?? '';
 
   return (
-    <>
-      <Sidebar displayName={displayName} avatarUrl={avatarUrl} email={email} />
-      <main className="pl-64 min-h-screen">
-        <div className="mx-auto max-w-7xl p-8">
-          {children}
-        </div>
-      </main>
-    </>
+    <DashboardClient 
+      displayName={displayName} 
+      avatarUrl={avatarUrl} 
+      email={email}
+      overviewData={overviewData} 
+    />
   );
 }

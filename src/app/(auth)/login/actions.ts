@@ -2,12 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { createClient } from '@/utils/supabase/server';
 
 export async function login(formData: FormData) {
   const supabase = await createClient();
 
-  // type-casting here for convenience
   const data = {
     email: formData.get('email') as string,
     password: formData.get('password') as string,
@@ -16,12 +16,11 @@ export async function login(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword(data);
 
   if (error) {
-    // Return encoded error string via URL search params for the client to show
     redirect('/login?message=' + encodeURIComponent(error.message));
   }
 
   revalidatePath('/', 'layout');
-  redirect('/finance');
+  redirect('/dashboard');
 }
 
 export async function signup(formData: FormData) {
@@ -38,15 +37,35 @@ export async function signup(formData: FormData) {
     redirect('/login?message=' + encodeURIComponent(error.message));
   }
 
-  // Assuming "Confirm email" is turned off, the user is signed in directly.
   revalidatePath('/', 'layout');
-  redirect('/finance');
+  redirect('/dashboard');
+}
+
+export async function signInWithGoogle() {
+  const supabase = await createClient();
+  const headersList = await headers();
+  const origin = headersList.get('origin') ?? '';
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${origin}/auth/callback?next=/dashboard`,
+    },
+  });
+
+  if (error) {
+    redirect('/login?message=' + encodeURIComponent(error.message));
+  }
+
+  if (data.url) {
+    redirect(data.url);
+  }
 }
 
 export async function logout() {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  
+
   revalidatePath('/', 'layout');
   redirect('/login');
 }
