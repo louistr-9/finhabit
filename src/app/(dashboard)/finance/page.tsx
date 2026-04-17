@@ -2,10 +2,10 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Coffee, Zap, Wallet, ShoppingBag, ChevronLeft, ChevronRight, Activity, Calendar, Loader2, Pencil, Trash2, X, AlertTriangle } from 'lucide-react';
+import { Home, Coffee, Zap, Wallet, ShoppingBag, ChevronLeft, ChevronRight, Activity, Calendar, Loader2, Pencil, Trash2, X, AlertTriangle } from 'lucide-react';
 import { getMonthlyTransactions, addTransaction, deleteTransaction, updateTransaction, getBalanceHubData, aiCategorize } from './actions';
 
-const EXPENSE_CATEGORIES = ['Thiết yếu', 'Ăn uống', 'Mua sắm', 'Di chuyển', 'Giải trí', 'Sức khỏe', 'Chi tiêu khác'];
+const EXPENSE_CATEGORIES = ['Thiết yếu', 'Ăn uống', 'Mua sắm', 'Di chuyển', 'Giải trí', 'Sức khỏe', 'Tiền nhà', 'Chi tiêu khác'];
 const INCOME_CATEGORIES = ['Tiền lương', 'Thu nhập phụ', 'Tiền thưởng', 'Đầu tư', 'Thu nhập khác'];
 
 const CATEGORY_MAP: Record<string, { icon: any, color: string, bg: string }> = {
@@ -15,13 +15,13 @@ const CATEGORY_MAP: Record<string, { icon: any, color: string, bg: string }> = {
   'Di chuyển': { icon: Activity, color: 'text-orange-500 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/40' },
   'Giải trí': { icon: Activity, color: 'text-pink-500 dark:text-pink-400', bg: 'bg-pink-100 dark:bg-pink-900/40' },
   'Sức khỏe': { icon: Activity, color: 'text-rose-500 dark:text-rose-400', bg: 'bg-rose-100 dark:bg-rose-900/40' },
+  'Tiền nhà': { icon: Home, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
+  'Chi tiêu khác': { icon: Activity, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
   'Tiền lương': { icon: Wallet, color: 'text-emerald-teal', bg: 'bg-emerald-teal/20 dark:bg-emerald-teal/30' },
   'Thu nhập phụ': { icon: Wallet, color: 'text-emerald-500 dark:text-emerald-400', bg: 'bg-emerald-500/20 dark:bg-emerald-500/30' },
   'Tiền thưởng': { icon: Zap, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-600/20 dark:bg-emerald-600/30' },
   'Đầu tư': { icon: Activity, color: 'text-indigo-500 dark:text-indigo-400', bg: 'bg-indigo-100 dark:bg-indigo-900/40' },
-  'Chi tiêu khác': { icon: Activity, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
   'Thu nhập khác': { icon: Wallet, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
-  'Khác': { icon: Activity, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
 };
 
 export default function FinancePage() {
