@@ -2,12 +2,16 @@
 
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+// ==========================================
+// QUẢN LÝ GIAO DỊCH (SUPABASE)
+// ==========================================
 
 export async function getMonthlyTransactions(year: number, month: number) {
   const supabase = await createClient();
 
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  // Lấy ngày cuối tháng chính xác
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
@@ -39,7 +43,6 @@ export async function addTransaction(formData: FormData) {
   const type = formData.get('type') as 'income' | 'expense';
   const date = formData.get('date') as string;
 
-  // Nếu không có nội dung, tự động chuyển về danh mục "Khác" và lấy tên danh mục làm tiêu đề
   let category = categoryInput;
   let title = titleInput?.trim();
 
@@ -74,7 +77,7 @@ export async function deleteTransaction(id: string) {
     .from('transactions')
     .delete()
     .eq('id', id)
-    .eq('user_id', user.id); // RLS extra safety
+    .eq('user_id', user.id);
 
   if (error) {
     console.error('Error deleting transaction:', error.message);
@@ -126,7 +129,6 @@ export async function updateTransaction(id: string, formData: FormData) {
 export async function getBalanceHubData() {
   const supabase = await createClient();
 
-  // Tổng số dư: tất cả thời gian
   const { data: allTx, error: allErr } = await supabase
     .from('transactions')
     .select('amount, type');
@@ -136,7 +138,6 @@ export async function getBalanceHubData() {
     return { balance: 0, monthlyIncome: 0 };
   }
 
-  // Thu nhập tháng này
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
@@ -161,23 +162,26 @@ export async function getBalanceHubData() {
   return { balance, monthlyIncome };
 }
 
-// AI Categorization Action
-import { GoogleGenAI } from '@google/genai';
 
-/**
- * Hàm kiểm tra và chuẩn hóa danh mục từ AI trả về
- */
+// ==========================================
+// TÍNH NĂNG AI (GEMINI)
+// ==========================================
+
 function validateCategory(output: string, type: 'income' | 'expense'): string {
   try {
-    const expenseCategories = ['Thiết yếu', 'Ăn uống', 'Mua sắm', 'Di chuyển', 'Giải trí', 'Sức khỏe', 'Chi tiêu khác'];
+    const expenseCategories = ['Thiết yếu', 'Ăn uống', 'Mua sắm', 'Di chuyển', 'Giải trí', 'Sức khỏe', 'Tiền nhà', 'Chi tiêu khác'];
     const incomeCategories = ['Tiền lương', 'Thu nhập phụ', 'Tiền thưởng', 'Đầu tư', 'Thu nhập khác'];
 
+    const normalizedOutput = (output || '').trim().toLowerCase();
+
     if (type === 'expense') {
-      return expenseCategories.includes(output) ? output : 'Chi tiêu khác';
+      const match = expenseCategories.find(c => c.toLowerCase() === normalizedOutput);
+      return match || 'Chi tiêu khác';
     }
 
     if (type === 'income') {
-      return incomeCategories.includes(output) ? output : 'Thu nhập khác';
+      const match = incomeCategories.find(c => c.toLowerCase() === normalizedOutput);
+      return match || 'Thu nhập khác';
     }
 
     return 'Chi tiêu khác';
@@ -195,56 +199,64 @@ export interface AICategorizeResult {
 }
 
 export async function aiCategorize(title: string): Promise<AICategorizeResult> {
+  const lowerTitle = title.toLowerCase();
+  const isIncomeKeywords = /nhận|lương|thưởng|được|lãi|\+|thu nhập/.test(lowerTitle);
+  const guessedType: 'income' | 'expense' = isIncomeKeywords ? 'income' : 'expense';
+
   const defaultResult: AICategorizeResult = {
     title,
     amount: 0,
-    type: 'expense',
-    category: 'Chi tiêu khác'
+    type: guessedType,
+    category: guessedType === 'income' ? 'Thu nhập khác' : 'Chi tiêu khác'
   };
-
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || !title?.trim()) return defaultResult;
 
-  const ai = new GoogleGenAI({ apiKey });
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    generationConfig: { responseMimeType: "application/json" }
+  });
 
   try {
-    const prompt = `Role: Bạn là chuyên gia phân tích dữ liệu tài chính cho ứng dụng "FinHabit".
-Task: Phân tích nội dung giao dịch để trích xuất thông tin.
+    const prompt = `Bạn là một trợ lý tài chính thông minh trong ứng dụng FinHabit. Phân tích nội dung sau và trả về DUY NHẤT một đối tượng JSON. KHÔNG giải thích, KHÔNG thêm \`\`\`json.
 
-Xác định Loại (type): 
-- 'income': Nhận tiền, lương, thưởng, bán đồ, lãi đầu tư.
-- 'expense': Trả tiền, mua sắm, ăn uống, chi trả dịch vụ.
+Input: "${title}"
 
-Chọn Danh mục (category):
-- Nếu là 'expense': [Thiết yếu, Ăn uống, Mua sắm, Di chuyển, Giải trí, Sức khỏe, Chi tiêu khác].
-- Nếu là 'income': [Tiền lương, Thu nhập phụ, Tiền thưởng, Đầu tư, Thu nhập khác].
+Quy tắc:
+1. "type": Chọn "income" (nếu là nhận tiền, lương, thưởng, lãi) hoặc "expense" (nếu là mua sắm, trả tiền, ăn uống, đổ xăng, chi trả).
+2. "category": Phải CHÍNH XÁC một trong các từ sau:
+   - Dành cho "expense": "Thiết yếu", "Ăn uống", "Mua sắm", "Di chuyển", "Giải trí", "Sức khỏe", "Tiền nhà", "Chi tiêu khác".
+   - Dành cho "income": "Tiền lương", "Thu nhập phụ", "Tiền thưởng", "Đầu tư", "Thu nhập khác".
+   (Ví dụ: "ăn sáng", "cà phê" -> "Ăn uống"; "mua áo", "mua đồ" -> "Mua sắm"; "đổ xăng", "đi grab" -> "Di chuyển").
+3. "title": Tóm tắt ngắn gọn giao dịch (viết hoa chữ cái đầu).
+4. "amount": Số tiền (chỉ chứa chữ số, ví dụ 50k -> 50000, 1tr -> 1000000). Nếu không có số tiền thì trả về 0.
 
-Định dạng đầu ra (JSON duy nhất):
+Định dạng JSON bắt buộc:
 {
-  "title": "Tên ngắn gọn của giao dịch (viết hoa chữ cái đầu)",
-  "amount": number (chỉ lấy số, quy đổi 'k', 'tr' sang đồng. VD: 50k -> 50000),
-  "type": "income" hoặc "expense",
-  "category": "Tên danh mục chính xác từ danh sách"
-}
+  "title": string,
+  "amount": number,
+  "type": "income" | "expense",
+  "category": string
+}`;
 
-Ràng buộc:
-- Nếu không có số tiền, amount = 0.
-- KHÔNG trả về văn bản giải thích. Không bọc trong code block.
-- JSON phải parse được ngay.
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    let outputText = response.text().trim();
 
-Nội dung: "${title}"`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: prompt,
-    });
-
-    let outputText = response.text?.trim() || '{}';
-    outputText = outputText.replace(/^```json/, '').replace(/```$/, '').replace(/^```/, '').trim();
+    outputText = outputText.replace(/^```(json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
     const parsed = JSON.parse(outputText);
-    const resultType: 'income' | 'expense' = parsed.type === 'income' ? 'income' : 'expense';
+
+    console.log('--- AI TRẢ VỀ GÌ? ---');
+    console.log('Input:', title);
+    console.log('Parsed:', parsed);
+
+    const aiType = parsed.type?.toLowerCase();
+    const resultType: 'income' | 'expense' = (aiType === 'income' || aiType === 'expense')
+      ? aiType
+      : guessedType;
 
     return {
       title: parsed.title || title,
@@ -253,7 +265,58 @@ Nội dung: "${title}"`;
       category: validateCategory(parsed.category || '', resultType)
     };
   } catch (error) {
-    console.error('Lỗi AI Categorize:', error);
-    return defaultResult;
+    console.error('Lỗi nhận diện AI (Có thể do hết Quota):', error);
+
+    // Fallback thông minh cục bộ khi API lỗi (ví dụ báo 429 Quota Exceeded do vượt giới hạn request/ngày)
+    const lowerTitle = title.toLowerCase();
+    let fbType: 'income' | 'expense' = 'expense';
+    let fbCategory = 'Chi tiêu khác';
+
+    if (/(ăn|uống|cà phê|cafe|phở|bún|cơm|bánh|sáng|trưa|tối)/.test(lowerTitle)) {
+      fbCategory = 'Ăn uống';
+    } else if (/(thịt|cá|bhx|siêu thị|đi chợ|rau|củ|quả|gạo|trứng|sữa|bánh mì)/.test(lowerTitle)) {
+      fbCategory = 'Thiết yếu';
+    } else if (/(mua|áo|quần|giày|dép|balo|sắm|tả|bỉm|sữa)/.test(lowerTitle)) {
+      fbCategory = 'Mua sắm';
+    } else if (/(xăng|grab|taxi|xe|đi lại|gửi xe)/.test(lowerTitle)) {
+      fbCategory = 'Di chuyển';
+    } else if (/(lương|thưởng|nhận được|tiền lãi|khen thưởng)/.test(lowerTitle)) {
+      fbType = 'income';
+      fbCategory = 'Tiền lương';
+    } else if (/(thuốc|khám|viện|sức khỏe|gym|tập)/.test(lowerTitle)) {
+      fbCategory = 'Sức khỏe';
+    } else if (/(phim|chơi|giải trí|xem|truyện)/.test(lowerTitle)) {
+      fbCategory = 'Giải trí';
+    } else if (/(nhà|trọ|thuê nhà|tiền nhà|điện|nước|mạng|internet|rác|wifi)/.test(lowerTitle)) {
+      fbCategory = 'Tiền nhà';
+    }
+    else if (/(lương)/.test(lowerTitle)) {
+      fbType = 'income';
+      fbCategory = 'Tiền lương';
+    }
+    else if (/(phụ|nhận được|tiền lãi)/.test(lowerTitle)) {
+      fbType = 'income';
+      fbCategory = 'Thu nhập phụ';
+    }
+    else if (/(thưởng|khen thưởng)/.test(lowerTitle)) {
+      fbType = 'income';
+      fbCategory = 'Tiền thưởng';
+    }
+    else if (/(đầu tư)/.test(lowerTitle)) {
+      fbType = 'income';
+      fbCategory = 'Đầu tư';
+    }
+    else if (/(khác|thu nhập khác)/.test(lowerTitle)) {
+      fbType = 'income';
+      fbCategory = 'Thu nhập khác';
+    }
+
+
+    return {
+      title,
+      amount: 0,
+      type: fbType,
+      category: validateCategory(fbCategory, fbType)
+    };
   }
 }
