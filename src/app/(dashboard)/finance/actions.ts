@@ -2,6 +2,11 @@
 
 import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
+
+// Helper to get consistent date string for VN (GMT+7)
+function getVNTime(date: Date = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(date);
+}
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // ==========================================
@@ -138,17 +143,23 @@ export async function getBalanceHubData() {
     return { balance: 0, monthlyIncome: 0 };
   }
 
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+  const today = getVNTime();
+  const [year, month] = today.split('-').map(Number);
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  const { data: monthTx, error: monthErr } = await supabase
+  const { data: monthIncomeTx } = await supabase
     .from('transactions')
-    .select('amount, type')
+    .select('amount')
     .eq('type', 'income')
+    .gte('date', startDate)
+    .lte('date', endDate);
+
+  const { data: monthSpentTx } = await supabase
+    .from('transactions')
+    .select('amount')
+    .eq('type', 'expense')
     .gte('date', startDate)
     .lte('date', endDate);
 
@@ -157,9 +168,59 @@ export async function getBalanceHubData() {
     balance += t.type === 'income' ? t.amount : -t.amount;
   });
 
-  const monthlyIncome = (monthTx ?? []).reduce((sum, t) => sum + t.amount, 0);
+  const monthlyIncome = (monthIncomeTx ?? []).reduce((sum, t) => sum + t.amount, 0);
+  const monthlySpent = (monthSpentTx ?? []).reduce((sum, t) => sum + t.amount, 0);
 
-  return { balance, monthlyIncome };
+  return { balance, monthlyIncome, monthlySpent };
+}
+
+export async function getWeeklyOverview() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const todayStr = getVNTime();
+  const localToday = new Date();
+  
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  const startDate = getVNTime(sevenDaysAgo);
+  const endDate = todayStr;
+
+  const { data: transactions } = await supabase
+    .from('transactions')
+    .select('amount, type, date')
+    .eq('user_id', user.id)
+    .gte('date', startDate)
+    .lte('date', endDate);
+
+  const txMap = new Map<string, { spend: number, income: number }>();
+  (transactions ?? []).forEach(t => {
+    const d = t.date;
+    const existing = txMap.get(d) || { spend: 0, income: 0 };
+    if (t.type === 'expense') existing.spend += t.amount;
+    else existing.income += t.amount;
+    txMap.set(d, existing);
+  });
+
+  const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const chartData = [];
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const dStr = getVNTime(d);
+    const dayName = dayNames[d.getDay()];
+    const stats = txMap.get(dStr) || { spend: 0, income: 0 };
+    chartData.push({
+      name: dayName,
+      fullDate: dStr,
+      spend: stats.spend,
+      income: stats.income
+    });
+  }
+
+  return chartData;
 }
 
 

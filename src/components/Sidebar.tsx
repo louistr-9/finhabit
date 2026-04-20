@@ -14,9 +14,9 @@ import { GlobalQuickAction } from './GlobalQuickAction';
 import { logout } from '@/app/(auth)/login/actions';
 
 const navItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
-  { label: 'Finance', icon: Wallet, href: '/finance' },
-  { label: 'Habit', icon: CheckSquare, href: '/habit' },
+  { label: 'Tổng quan', icon: LayoutDashboard, href: '/dashboard' },
+  { label: 'Tài chính', icon: Wallet, href: '/finance' },
+  { label: 'Thói quen', icon: CheckSquare, href: '/habit' },
   { label: 'Báo cáo', icon: BarChart3, href: '/report' },
 ];
 
@@ -71,7 +71,7 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
   }, []);
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-[var(--border)] bg-[var(--background)] px-4 py-8 flex flex-col">
+    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-[var(--border)] bg-[var(--background)] px-4 py-8 hidden lg:flex flex-col">
       {/* Brand */}
       <div className="mb-10 flex items-center px-4 shrink-0">
         <div className="h-8 w-8 rounded-lg bg-emerald-teal flex items-center justify-center mr-3">
