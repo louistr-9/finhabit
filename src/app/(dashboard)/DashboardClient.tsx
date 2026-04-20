@@ -5,12 +5,18 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {
   ArrowUpRight, ArrowDownRight, Flame, Check, Plus,
-  TrendingUp, Wallet, Target, Clock, ChevronRight,
+  TrendingUp, Wallet, Target, Clock, ChevronRight, Activity, Code,
+  BookOpen, Dumbbell, Coffee, Heart, Brain, Sparkles, Droplets, 
+  Moon, Sun, Apple, Zap, Music, Camera, Circle
 } from 'lucide-react';
-import * as Icons from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
+
+const ICON_MAP: Record<string, any> = {
+  BookOpen, Dumbbell, Coffee, Heart, Brain, Sparkles, Droplets, 
+  Target, Moon, Sun, Apple, Zap, Music, Camera
+};
 
 interface Habit {
   id: string;
@@ -40,8 +46,9 @@ interface Props {
   overviewData: OverviewData;
 }
 
+const moneyFormatter = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 const formatMoney = (amount: number) => {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount).replace('₫', '').trim() + ' ₫';
+  return moneyFormatter.format(amount).replace('₫', '').trim() + ' ₫';
 };
 
 export default function DashboardClient({ displayName, avatarUrl, email, overviewData }: Props) {
@@ -196,8 +203,8 @@ export default function DashboardClient({ displayName, avatarUrl, email, overvie
                   <Tooltip
                     contentStyle={{ borderRadius: '12px', border: '1px solid var(--border)', fontSize: '12px' }}
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={(value: any, name: string) => [
-                      new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(value)),
+                    formatter={(value: any, name: any) => [
+                      moneyFormatter.format(Number(value)),
                       name === 'spend' ? 'Chi tiêu' : 'Thu nhập',
                     ]}
                   />
@@ -207,7 +214,7 @@ export default function DashboardClient({ displayName, avatarUrl, email, overvie
               </ResponsiveContainer>
             ) : (
               <div className="w-full h-full flex items-center justify-center opacity-20">
-                <Icons.Activity className="w-8 h-8 animate-pulse" />
+                <Activity className="w-8 h-8 animate-pulse" />
               </div>
             )}
           </div>
@@ -240,7 +247,7 @@ export default function DashboardClient({ displayName, avatarUrl, email, overvie
 
             <div className="space-y-2.5">
               {habitList.map((habit) => {
-                const IconComponent = (Icons as any)[habit.icon] || Icons.Code;
+                const IconComponent = ICON_MAP[habit.icon] || Code;
                 return (
                   <button
                     key={habit.id}
