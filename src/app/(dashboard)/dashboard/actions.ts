@@ -90,9 +90,9 @@ export async function getDashboardOverview() {
     chartData,
     quickStats: {
       balance,
-      monthlySpent,
+      monthlySpent: monthlySpent || 0,
       habitCount: `${doneHabitsCount}/${totalHabits}`,
-      streak: achievements.currentStreak
+      streak: achievements.currentStreak || 0
     },
     habits
   };
