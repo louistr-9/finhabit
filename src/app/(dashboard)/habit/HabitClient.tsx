@@ -3,10 +3,18 @@
 import { useState, useTransition } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
-import { Check, Flame, Trophy, Target, Plus, Loader2, Sparkles, X, ChevronRight, Bell, Link2, Info, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { 
+  BookOpen, Dumbbell, Coffee, Heart, Brain, Sparkles, Droplets, 
+  Target, Moon, Sun, Apple, Zap, Music, Camera, Circle, Code,
+  Check, Flame, Trophy, Plus, Loader2, X, ChevronRight, Bell, Link2, Info, Pencil, Trash2, AlertTriangle
+} from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { toggleHabit, addHabit, updateHabit, deleteHabit, aiSuggestHabit } from './actions';
-import * as Icons from 'lucide-react';
+
+const ICON_MAP: Record<string, any> = {
+  BookOpen, Dumbbell, Coffee, Heart, Brain, Sparkles, Droplets, 
+  Target, Moon, Sun, Apple, Zap, Music, Camera
+};
 
 interface Habit {
   id: string;
@@ -283,7 +291,7 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
                       <label className="text-sm font-bold text-foreground/70 ml-1">Chọn biểu tượng</label>
                       <div className="grid grid-cols-7 gap-2">
                         {AVAILABLE_ICONS.map((iconName) => {
-                          const IconComp = (Icons as any)[iconName] || Icons.Circle;
+                          const IconComp = ICON_MAP[iconName] || Circle;
                           return (
                             <button
                               key={iconName}
@@ -385,7 +393,7 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
           ) : (
             <div className="space-y-4">
               {habits.map((habit) => {
-                const IconComponent = (Icons as any)[habit.icon] || Icons.Code;
+                const IconComponent = ICON_MAP[habit.icon] || Code;
                 // Determine background color based on tailwind class
                 const bgClass = habit.color === 'text-emerald-500' ? 'bg-emerald-50 dark:bg-emerald-500/10' :
                               habit.color === 'text-indigo-500' ? 'bg-indigo-50 dark:bg-indigo-500/10' :
