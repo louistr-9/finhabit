@@ -4,21 +4,18 @@ import { createClient } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { GoogleGenAI } from '@google/genai';
 
+// Helper to get consistent date string for VN (GMT+7)
+function getVNTime(date: Date = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(date);
+}
+
 // Fetch all habits and their log status for a specific date (default today)
 export async function getDailyHabits(dateStr?: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  // If no date provided, use today local time (adjust as needed via client, but server side 'today' in UTC might not exactly match local, so we accept dateStr from client if possible, default 'today')
-  let today = dateStr;
-  if (!today) {
-    const nowLocal = new Date();
-    // Vd: '2026-04-16' in local timezone. We assume GMT+7 given context
-    const offset = 7 * 60 * 60 * 1000;
-    const localDate = new Date(nowLocal.getTime() + offset);
-    today = localDate.toISOString().split('T')[0];
-  }
+  let today = dateStr || getVNTime();
 
   // 1. Fetch habits
   const { data: habits, error: habitsErr } = await supabase
@@ -33,10 +30,10 @@ export async function getDailyHabits(dateStr?: string) {
 
   if (!habits || habits.length === 0) return [];
 
-  // 2. Fetch logs for today
+  // 2. Fetch logs for chosen date
   const { data: logs, error: logsErr } = await supabase
     .from('habit_logs')
-    .select('habit_id, completed')
+    .select('habit_id, completed, current_value, date')
     .eq('date', today);
 
   if (logsErr) {
@@ -44,19 +41,29 @@ export async function getDailyHabits(dateStr?: string) {
     return [];
   }
 
-  const logMap = new Map(logs?.map(l => [l.habit_id, l.completed]));
+  // Normalize date comparison: ensure database date matches today string
+  const logMap = new Map();
+  logs?.forEach(l => {
+    const normalizedDate = typeof l.date === 'string' ? l.date.slice(0, 10) : getVNTime(new Date(l.date));
+    if (normalizedDate === today) {
+      logMap.set(l.habit_id, { done: l.completed, val: l.current_value });
+    }
+  });
 
-  // For streak calculation, realistically we'd need a more complex query. 
-  // For simplicity, we just return basic info here. You can expand streak logic later.
-  return habits.map(h => ({
-    id: h.id,
-    name: h.name,
-    icon: h.icon || 'BookOpen', // Fallback icon name
-    color: h.color || 'text-indigo-600',
-    bg: 'bg-slate-100', // Basic bg
-    streak: Math.floor(Math.random() * 5), // Mock streak for now, needs DB historic scan
-    done: logMap.get(h.id) === true
-  }));
+  return habits.map(h => {
+    const log = logMap.get(h.id);
+    return {
+      id: h.id,
+      name: h.name,
+      group_name: h.group_name || null,
+      icon: h.icon || 'BookOpen',
+      color: h.color || 'text-indigo-600',
+      unit: h.unit || 'lần',
+      goal_value: h.goal_value || 1,
+      current_value: log?.val || 0,
+      done: log?.done || false
+    };
+  });
 }
 
 export async function toggleHabit(habitId: string, isDone: boolean, dateStr?: string) {
@@ -64,25 +71,22 @@ export async function toggleHabit(habitId: string, isDone: boolean, dateStr?: st
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Unauthorized');
 
-  let today = dateStr;
-  if (!today) {
-    const nowLocal = new Date();
-    const offset = 7 * 60 * 60 * 1000;
-    const localDate = new Date(nowLocal.getTime() + offset);
-    today = localDate.toISOString().split('T')[0];
-  }
+  const targetDate = dateStr || getVNTime();
 
-  // Upsert into habit_logs
-  // Note: UPSERT in Supabase requires unique constraint. In schema: UNIQUE(habit_id, date) -- wait, does schema have user_id in UNIQUE? 
-  // Schema has: UNIQUE(habit_id, date). This is safe as long as habit_id is unique per user (it is).
+  // If done, we might want to set current_value to goal_value
+  // Fetch the habit to know the goal_value
+  const { data: habit } = await supabase.from('habits').select('goal_value').eq('id', habitId).single();
+  const goal = habit?.goal_value || 1;
+
   const { error } = await supabase
     .from('habit_logs')
     .upsert(
       { 
         habit_id: habitId, 
         user_id: user.id, 
-        date: today, 
-        completed: isDone 
+        date: targetDate, 
+        completed: isDone,
+        current_value: isDone ? goal : 0
       },
       { onConflict: 'habit_id,date' }
     );
@@ -92,9 +96,41 @@ export async function toggleHabit(habitId: string, isDone: boolean, dateStr?: st
     throw new Error('Could not toggle habit');
   }
 
-  // revalidate both dashboard and habit paths
   revalidatePath('/dashboard');
   revalidatePath('/habit');
+  revalidatePath('/');
+}
+
+export async function updateHabitValue(habitId: string, value: number, goal: number, dateStr?: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Unauthorized');
+
+  const targetDate = dateStr || getVNTime();
+
+  const isDone = value >= (goal || 1);
+
+  const { error } = await supabase
+    .from('habit_logs')
+    .upsert(
+      { 
+        habit_id: habitId, 
+        user_id: user.id, 
+        date: targetDate, 
+        current_value: value,
+        completed: isDone
+      },
+      { onConflict: 'habit_id,date' }
+    );
+
+  if (error) {
+    console.error('Error updating habit value:', error);
+    throw new Error('Could not update habit');
+  }
+
+  revalidatePath('/dashboard');
+  revalidatePath('/habit');
+  revalidatePath('/');
 }
 
 export async function addHabit(
@@ -105,7 +141,9 @@ export async function addHabit(
   frequency?: any, 
   reminderTime?: string, 
   linkedCategory?: string,
-  goalValue?: number
+  goalValue?: number,
+  unit?: string,
+  groupName?: string
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -122,7 +160,9 @@ export async function addHabit(
       frequency: frequency || { type: 'daily' },
       reminder_time: reminderTime || null,
       linked_finance_category: linkedCategory || null,
-      goal_value: goalValue || null
+      goal_value: goalValue || 1,
+      unit: unit || 'lần',
+      group_name: groupName || null
     });
 
   if (error) {
@@ -153,7 +193,9 @@ Danh sách Màu khả dụng (Tailwind text class): [text-emerald-500, text-indi
   "description": "Mục tiêu cụ thể (VD: 10 trang mỗi ngày, 30 phút buổi sáng)",
   "icon": "Tên icon chính xác từ danh sách trên",
   "color": "Tên class màu chính xác từ danh sách trên",
-  "goal_value": number (Giá trị mục tiêu nếu có, VD: uống 2L nước -> 2. Nếu không có để 0),
+  "goal_value": number (Giá trị mục tiêu nếu có, VD: uống 2L nước -> 2000. Đọc sách -> 1. Mặc định 1),
+  "unit": "Đơn vị đo (VD: ml, phút, trang, lần)",
+  "group_name": "Tên nhóm thói quen (VD: Thể thao, Học tập, Sức khỏe)",
   "frequency": {"type": "daily"}
 }
 
@@ -172,7 +214,11 @@ Người dùng nói: "${promptInput}"`;
     let outputText = response.text?.trim() || '{}';
     outputText = outputText.replace(/^```json/, '').replace(/```$/, '').replace(/^```/, '').trim();
     
-    return JSON.parse(outputText);
+    const data = JSON.parse(outputText);
+    return {
+      ...data,
+      group_name: data.group_name || ""
+    };
   } catch (error) {
     console.error('AI Suggestion Error:', error);
     return null;
@@ -222,6 +268,8 @@ export async function updateHabit(
     reminder_time?: string;
     linked_finance_category?: string;
     goal_value?: number;
+    unit?: string;
+    group_name?: string;
   }
 ) {
   const supabase = await createClient();
@@ -241,4 +289,217 @@ export async function updateHabit(
 
   revalidatePath('/habit');
   revalidatePath('/dashboard');
+}
+
+export async function getHabitMonthlyHistory(habitId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const todayStr = getVNTime();
+  const localToday = new Date(); // Intl handles the zone for the string, but for Date operations we should be careful.
+  
+  // Fetch last 30 days
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const startDate = getVNTime(thirtyDaysAgo);
+
+  const { data: logs, error } = await supabase
+    .from('habit_logs')
+    .select('date, current_value, completed')
+    .eq('habit_id', habitId)
+    .gte('date', startDate)
+    .order('date', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching habit history:', error);
+    return [];
+  }
+
+  return logs || [];
+}
+export async function getHabitAchievements() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { longestStreak: 0, todayCompletionRate: 0, globalHistory: [] };
+
+  const todayStr = getVNTime();
+  const localToday = new Date();
+  
+  // Fetch all user habits
+  const { data: habits } = await supabase
+    .from('habits')
+    .select('id')
+    .eq('user_id', user.id);
+
+  if (!habits || habits.length === 0) {
+    return { longestStreak: 0, currentStreak: 0, todayCompletionRate: 0, globalHistory: [] };
+  }
+
+  const habitIds = habits.map(h => h.id);
+
+  // Fetch all logs (limit to last 90 days)
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const startDate = getVNTime(ninetyDaysAgo);
+
+  const { data: logs } = await supabase
+    .from('habit_logs')
+    .select('habit_id, date, completed')
+    .in('habit_id', habitIds)
+    .gte('date', startDate)
+    .order('date', { ascending: false });
+
+  if (!logs) return { longestStreak: 0, todayCompletionRate: 0, globalHistory: [] };
+
+  // 1. Today's Completion Rate
+  const todayLogs = logs.filter(l => {
+    const dStr = typeof l.date === 'string' ? l.date.slice(0, 10) : getVNTime(new Date(l.date));
+    return dStr === todayStr && l.completed;
+  });
+  const todayCompletionRate = habits.length > 0 ? Math.round((todayLogs.length / habits.length) * 100) : 0;
+
+  // Group SUCCESSFUL habit completions per day
+  const completionsPerDay = new Map<string, number>();
+  logs.forEach(l => {
+    if (l.completed) {
+      const dStr = typeof l.date === 'string' ? l.date.slice(0, 10) : getVNTime(new Date(l.date));
+      completionsPerDay.set(dStr, (completionsPerDay.get(dStr) || 0) + 1);
+    }
+  });
+
+  // Determine "Success Days" ( >= 50% completion)
+  const successDays: string[] = [];
+  completionsPerDay.forEach((count, date) => {
+    if (count >= habits.length * 0.5) {
+      successDays.push(date);
+    }
+  });
+  
+  // Sort descending
+  successDays.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+  let currentStreak = 0;
+  let maxStreak = 0;
+
+  if (successDays.length > 0) {
+    // Current Streak Logic
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = getVNTime(yesterday);
+
+    const hasToday = successDays.includes(todayStr);
+    const hasYesterday = successDays.includes(yesterdayStr);
+
+    if (hasToday || hasYesterday) {
+      let checkDate = hasToday ? new Date() : yesterday;
+      let isStillConsecutive = true;
+      while (isStillConsecutive) {
+        const dStr = getVNTime(checkDate);
+        if (successDays.includes(dStr)) {
+          currentStreak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        } else {
+          isStillConsecutive = false;
+        }
+      }
+    }
+
+    // Longest Streak Logic
+    let tempStreak = 0;
+    for (let i = 0; i < successDays.length; i++) {
+       if (i === 0) {
+         tempStreak = 1;
+       } else {
+         const d1 = new Date(successDays[i-1]);
+         const d2 = new Date(successDays[i]);
+         const diff = (d1.getTime() - d2.getTime()) / (1000 * 3600 * 24);
+         if (diff === 1) {
+           tempStreak++;
+         } else {
+           maxStreak = Math.max(maxStreak, tempStreak);
+           tempStreak = 1;
+         }
+       }
+    }
+    maxStreak = Math.max(maxStreak, tempStreak);
+  }
+
+  // 3. Global History (Last 35 days)
+  const globalHistory = [];
+  for (let i = 0; i < 35; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - (34 - i));
+    const dStr = getVNTime(d);
+    const count = completionsPerDay.get(dStr) || 0;
+    
+    const ratio = count / habits.length;
+    let level = 0;
+    if (ratio >= 0.8) level = 4;
+    else if (ratio >= 0.5) level = 3;
+    else if (ratio >= 0.2) level = 2;
+    else if (ratio > 0) level = 1;
+
+    globalHistory.push({ date: dStr, level, count });
+  }
+
+  return {
+    longestStreak: maxStreak,
+    currentStreak: currentStreak,
+    todayCompletionRate,
+    globalHistory
+  };
+}
+
+export async function getGlobalHistory(month: number, year: number) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  // First and last day of month
+  const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+  const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
+  // Fetch all user habits to calculate percentages
+  const { data: habits } = await supabase
+    .from('habits')
+    .select('id')
+    .eq('user_id', user.id);
+
+  if (!habits || habits.length === 0) return [];
+
+  const { data: logs } = await supabase
+    .from('habit_logs')
+    .select('date, completed')
+    .eq('user_id', user.id)
+    .gte('date', startDate)
+    .lte('date', endDate);
+
+  if (!logs) return [];
+
+  const historyMap = new Map<string, number>();
+  logs.forEach(l => {
+    if (l.completed) {
+      historyMap.set(l.date, (historyMap.get(l.date) || 0) + 1);
+    }
+  });
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const history = [];
+
+  for (let i = 1; i <= daysInMonth; i++) {
+    const dStr = `${year}-${month.toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
+    const count = historyMap.get(dStr) || 0;
+    
+    const ratio = count / habits.length;
+    let level = 0;
+    if (ratio > 0.8) level = 4;
+    else if (ratio > 0.5) level = 3;
+    else if (ratio > 0.2) level = 2;
+    else if (ratio > 0) level = 1;
+
+    history.push({ date: dStr, level, count });
+  }
+
+  return history;
 }

@@ -1,7 +1,13 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
-import { getDailyHabits } from '../habit/actions';
+import { getDailyHabits, getHabitAchievements } from '../habit/actions';
+
+// Helper to get consistent date string for VN (GMT+7)
+function getVNTime(date: Date = new Date()) {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(date);
+}
+
 
 export async function getDashboardOverview() {
   const supabase = await createClient();
@@ -15,14 +21,11 @@ export async function getDashboardOverview() {
     };
   }
 
-  const currentDate = new Date();
-  // Ensure we use VN timezone for date boundaries if needed
-  const offset = 7 * 60 * 60 * 1000;
-  const localCurrentDate = new Date(currentDate.getTime() + offset);
-  
-  const year = localCurrentDate.getUTCFullYear();
-  const month = localCurrentDate.getUTCMonth() + 1;
-  const todayStr = localCurrentDate.toISOString().split('T')[0];
+  const todayStr = getVNTime();
+  const [yearStr, monthStr] = todayStr.split('-');
+  const year = parseInt(yearStr);
+  const month = parseInt(monthStr);
+
 
   // 1. Fetch habits for today
   const habits = await getDailyHabits(todayStr);
@@ -41,10 +44,12 @@ export async function getDashboardOverview() {
   // For Chart (Last 7 days)
   const last7DaysMap = new Map<string, { income: number; spend: number }>();
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(localCurrentDate.getTime() - i * 24 * 60 * 60 * 1000);
-    const dateKey = d.toISOString().split('T')[0];
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateKey = getVNTime(d);
     last7DaysMap.set(dateKey, { income: 0, spend: 0 });
   }
+
 
   if (transactions) {
     transactions.forEach(t => {
@@ -79,14 +84,17 @@ export async function getDashboardOverview() {
     };
   });
 
+  const achievements = await getHabitAchievements();
+
   return {
     chartData,
     quickStats: {
       balance,
       monthlySpent,
       habitCount: `${doneHabitsCount}/${totalHabits}`,
-      streak: 0 // Simplification for now
+      streak: achievements.currentStreak
     },
     habits
   };
+
 }
