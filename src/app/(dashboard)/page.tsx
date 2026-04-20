@@ -26,10 +26,10 @@ export default async function DashboardPage() {
   const overviewData = {
     chartData: weeklyChart,
     quickStats: {
-      balance: balanceHub.balance,
-      monthlySpent: balanceHub.monthlySpent,
+      balance: balanceHub.balance || 0,
+      monthlySpent: balanceHub.monthlySpent || 0,
       habitCount: `${habitStats.doneCount}/${habitStats.total}`,
-      streak: achievements.currentStreak,
+      streak: achievements.currentStreak || 0,
     },
     habits: habitStats.habits,
   };
