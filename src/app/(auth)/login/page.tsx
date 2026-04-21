@@ -1,5 +1,6 @@
 import { login, signup, signInWithGoogle } from './actions';
 import { Shield } from 'lucide-react';
+import Link from 'next/link';
 
 export default async function LoginPage({
   searchParams,
@@ -84,17 +85,19 @@ export default async function LoginPage({
             <div className="flex flex-col gap-3 mt-2">
               <button
                 formAction={login}
-                className="w-full bg-gradient-to-r from-emerald-teal to-teal-500 hover:from-teal-500 hover:to-emerald-teal text-white py-3 rounded-xl text-sm font-semibold shadow-md shadow-emerald-teal/20 hover:shadow-lg hover:-translate-y-0.5 transition-all active:scale-[0.98]"
+                className="w-full bg-gradient-to-r from-emerald-teal to-teal-500 hover:from-teal-500 hover:to-emerald-teal text-white py-3.5 rounded-xl text-sm font-semibold shadow-md shadow-emerald-teal/20 hover:shadow-lg hover:-translate-y-0.5 transition-all active:scale-[0.98]"
               >
                 Đăng Nhập
               </button>
 
-              <button
-                formAction={signup}
-                className="w-full bg-background border-2 border-[var(--border)] hover:border-emerald-teal/50 hover:bg-emerald-teal/5 text-foreground py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.98]"
-              >
-                Đăng Ký Tài Khoản Mới
-              </button>
+              <div className="text-center mt-2">
+                <p className="text-sm text-foreground/60">
+                  Chưa có tài khoản?{' '}
+                  <Link href="/signup" className="text-emerald-teal font-semibold hover:underline">
+                    Đăng ký ngay
+                  </Link>
+                </p>
+              </div>
             </div>
           </form>
         </div>
