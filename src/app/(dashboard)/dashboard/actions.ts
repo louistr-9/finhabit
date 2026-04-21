@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/utils/supabase/server';
+import { createClient, getCachedUser } from '@/utils/supabase/server';
 import { getDailyHabits, getHabitAchievements } from '../habit/actions';
 
 // Helper to get consistent date string for VN (GMT+7)
@@ -11,7 +11,7 @@ function getVNTime(date: Date = new Date()) {
 
 export async function getDashboardOverview() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
 
   if (!user) {
     return {

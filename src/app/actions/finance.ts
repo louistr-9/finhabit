@@ -1,14 +1,14 @@
 'use server'
 
-import { createClient } from '@/utils/supabase/server';
+import { createClient, getCachedUser } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 
 export async function addTransaction(formData: FormData) {
   const supabase = await createClient();
   
   // 1. Kiểm tra Security - Đảm bảo User đã đăng nhập
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
+  const user = await getCachedUser();
+  if (!user) {
     throw new Error('Bạn cần đăng nhập để thực hiện thao tác này');
   }
 

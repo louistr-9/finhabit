@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/utils/supabase/server';
+import { createClient, getCachedUser } from '@/utils/supabase/server';
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Thiết yếu': '#2563EB', // blue-600
@@ -14,7 +14,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export async function getReportData(year: number, month: number) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { expenseData: [], monthlyData: [] };
 
   // Fetch all transactions to build historical and current month data
