@@ -164,7 +164,7 @@ export function AIChatbot() {
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
             onClick={() => setIsOpen(true)}
-            className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-gradient-to-br from-emerald-teal to-deep-violet text-white shadow-lg shadow-emerald-teal/30 hover:scale-110 active:scale-95 transition-all flex items-center justify-center group"
+            className="fixed bottom-28 lg:bottom-6 right-4 lg:right-6 z-50 h-14 w-14 rounded-full bg-gradient-to-br from-emerald-teal to-deep-violet text-white shadow-lg shadow-emerald-teal/30 hover:scale-110 active:scale-95 transition-all flex items-center justify-center group"
           >
             <Sparkles className="h-6 w-6 group-hover:rotate-12 transition-transform" />
             {/* Pulse ring */}
