@@ -45,38 +45,43 @@ function isGroup(chatType: string): boolean {
 }
 
 // ==========================================
-// AI CATEGORIZATION (Finance + Habits)
+// PRE-DETECT: Habit vs Transaction
 // ==========================================
 
-async function processWithAI(input: string) {
-  const today = getVNDate();
-  const prompt = `Bạn là trợ lý FinHabit. Phân tích tin nhắn và trả về JSON.
+// Từ khoá tiền tệ — nếu có thì chắc chắn là giao dịch
+const MONEY_PATTERNS = /(\d+\s*k\b|\d+\s*tr\b|\d+\s*triệu|\d+\s*nghìn|\d+\s*ngàn|\d+\s*đồng|\d+đ\b|\d+\.?\d*k\b)/i;
 
-PHÂN LOẠI:
-1. GIAO DỊCH (type: 'transaction'): 
-   - 'expense': Ăn uống, Di chuyển, Mua sắm, Sức khỏe, ...
-   - 'income': Lương, Freelance, Quà tặng, ...
-   - 'saving': Tiết kiệm, Đầu tư.
-2. THÓI QUEN (type: 'habit'): 
-   - Ví dụ: "Chạy bộ 5km", "Đã đọc sách 30p", "Uống nước".
-   - Trả về 'habit_name' (tên thói quen) và 'value' (số lượng).
+// Từ khoá thói quen — nếu có thì ưu tiên thói quen
+const HABIT_KEYWORDS = /(đọc sách|học|chạy bộ|chạy|uống nước|uống|gym|tập|thiền|yoga|ngủ|dậy sớm|viết|vẽ|nấu ăn|thói quen|meditat|exercise|read|run|walk|drink|stretching|push.?up|squat|plank)/i;
 
-TRẢ VỀ JSON (không backticks):
-{
-  "type": "transaction" | "habit" | "unknown",
-  "data": {
-    "title": "string (cho giao dịch)",
-    "amount": number (cho giao dịch),
-    "category": "string",
-    "tx_type": "expense|income|saving",
-    "habit_name": "string (cho thói quen)",
-    "value": number (cho thói quen, mặc định 1 nếu không rõ)
-  },
-  "message": "phản hồi thân thiện 1 câu có emoji"
+function preDetectType(text: string): "habit" | "transaction" | "unknown" {
+  const hasMoney = MONEY_PATTERNS.test(text);
+  const hasHabitKw = HABIT_KEYWORDS.test(text);
+
+  // Nếu có cả 2 → ưu tiên giao dịch (vd: "mua sách 50k")
+  if (hasMoney && hasHabitKw) return "transaction";
+  // Chỉ có habit keyword → habit
+  if (hasHabitKw) return "habit";
+  // Chỉ có money → transaction
+  if (hasMoney) return "transaction";
+
+  return "unknown";
 }
 
-Tin nhắn: "${input}"
-Ngày: ${today}`;
+// ==========================================
+// AI CATEGORIZATION
+// ==========================================
+
+async function categorizeTransaction(input: string) {
+  const prompt = `Bạn là trợ lý tài chính. Phân tích giao dịch và trả về JSON (không backticks):
+{
+  "title": "tên giao dịch ngắn gọn",
+  "amount": number (đơn vị VND, 30k=30000, 1tr=1000000, 500=500000),
+  "category": "Ăn uống|Di chuyển|Mua sắm|Giải trí|Sức khỏe|Học tập|Hóa đơn|Tiết kiệm|Lương|Thu nhập khác|Chi tiêu khác",
+  "tx_type": "expense|income|saving",
+  "message": "phản hồi 1 câu thân thiện có emoji"
+}
+Tin nhắn: "${input}"`;
 
   try {
     const res = await fetch(
@@ -95,6 +100,61 @@ Ngày: ${today}`;
     const m = text.match(/\{[\s\S]*\}/);
     return m ? JSON.parse(m[0]) : null;
   } catch { return null; }
+}
+
+async function categorizeHabit(input: string) {
+  const prompt = `Bạn là trợ lý thói quen. Phân tích tin nhắn và trả về JSON (không backticks):
+{
+  "habit_name": "tên thói quen (ví dụ: Đọc sách, Chạy bộ, Học tiếng Anh, Uống nước)",
+  "value": number (số lượng, ví dụ: "30 phút" → 30, "5km" → 5, "2 ly" → 2, mặc định 1),
+  "message": "phản hồi 1 câu động viên có emoji"
+}
+Tin nhắn: "${input}"`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+      }
+    );
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const m = text.match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : null;
+  } catch { return null; }
+}
+
+// ==========================================
+// HABIT MATCHING — tìm thói quen trong DB
+// ==========================================
+
+function findMatchingHabit(habits: any[], habitName: string): any | null {
+  const name = habitName.toLowerCase().trim();
+
+  // 1) Exact match
+  const exact = habits.find((h: any) => h.name.toLowerCase() === name);
+  if (exact) return exact;
+
+  // 2) Partial match: DB name chứa trong input hoặc ngược lại
+  const partial = habits.find((h: any) => {
+    const dbName = h.name.toLowerCase();
+    return dbName.includes(name) || name.includes(dbName);
+  });
+  if (partial) return partial;
+
+  // 3) Keyword match: so sánh từng từ
+  const words = name.split(/\s+/);
+  const keyword = habits.find((h: any) => {
+    const dbWords = h.name.toLowerCase().split(/\s+/);
+    return words.some((w: string) => w.length > 2 && dbWords.some((dw: string) => dw.includes(w) || w.includes(dw)));
+  });
+  return keyword || null;
 }
 
 // ==========================================
@@ -117,10 +177,17 @@ Deno.serve(async (req: Request) => {
     const cmd = text.replace(/@\w+/, "").trim();
 
     // =====================
-    // /start, /help, /status, /today, /month (Giữ nguyên hoặc cập nhật)
+    // COMMANDS
     // =====================
     if (cmd === "/start") {
-      await sendTelegram(chatId, `🎉 Chào <b>${firstName}</b>!\n\nMình là Robot FinHabit.\n📝 Nhắn: <i>"Phở 50k"</i> hoặc <i>"Chạy bộ 5km"</i> để mình ghi nhé!`);
+      await sendTelegram(chatId,
+        `🎉 Chào <b>${firstName}</b>!\n\n` +
+        `Mình là Robot <b>FinHabit</b> — quản lý tài chính & thói quen.\n\n` +
+        `💸 <b>Ghi chi tiêu:</b> <i>"Ăn phở 50k"</i>\n` +
+        `🌿 <b>Ghi thói quen:</b> <i>"Đọc sách 30 phút"</i>\n\n` +
+        `📊 /status — Tổng quan tài chính\n` +
+        `🔥 /habits — Thói quen hôm nay`
+      );
       return new Response("OK", { status: 200 });
     }
 
@@ -130,30 +197,37 @@ Deno.serve(async (req: Request) => {
       const { data: txs } = await supabase.from("transactions").select("amount, type").eq("user_id", FINHABIT_USER_ID);
       let e = 0, i = 0, s = 0;
       (txs || []).forEach((t: any) => {
-        if (t.type === "expense") e += t.amount; else if (t.type === "income") i += t.amount; else s += t.amount;
+        if (t.type === "expense") e += t.amount;
+        else if (t.type === "income") i += t.amount;
+        else s += t.amount;
       });
-      await sendTelegram(chatId, `🏦 <b>Số dư:</b> <code>${formatVND(initial + i - e - s)}</code>\n💸 <b>Chi:</b> ${formatVND(e)}\n🐷 <b>Tiết kiệm:</b> ${formatVND(s)}`, inGroup ? msgId : undefined);
+      await sendTelegram(chatId,
+        `🏦 <b>Số dư:</b> <code>${formatVND(initial + i - e - s)}</code>\n` +
+        `💸 <b>Chi:</b> ${formatVND(e)}\n` +
+        `💰 <b>Thu:</b> ${formatVND(i)}\n` +
+        `🐷 <b>Tiết kiệm:</b> ${formatVND(s)}`,
+        inGroup ? msgId : undefined
+      );
       return new Response("OK", { status: 200 });
     }
 
-    // =====================
-    // /habits (Xem thói quen hôm nay)
-    // =====================
     if (cmd === "/habits") {
       const today = getVNDate();
       const { data: habits } = await supabase.from("habits").select("*").eq("user_id", FINHABIT_USER_ID);
       const { data: logs } = await supabase.from("habit_logs").select("*").eq("user_id", FINHABIT_USER_ID).eq("date", today);
 
       if (!habits || habits.length === 0) {
-        await sendTelegram(chatId, `🌿 Bạn chưa tạo thói quen nào trên Web cả!`, inGroup ? msgId : undefined);
+        await sendTelegram(chatId, `🌿 Bạn chưa tạo thói quen nào trên Web cả!\nTruy cập FinHabit Web để tạo nhé.`, inGroup ? msgId : undefined);
         return new Response("OK", { status: 200 });
       }
 
       const report = habits.map((h: any) => {
         const log = logs?.find((l: any) => l.habit_id === h.id);
-        const progress = log ? Math.min(100, Math.round((log.value / h.goal_value) * 100)) : 0;
-        const icon = progress >= 100 ? "✅" : "⏳";
-        return `${icon} <b>${h.name}</b>: ${log?.value || 0}/${h.goal_value} ${h.unit} (${progress}%)`;
+        const logValue = Number(log?.value) || 0;
+        const goalValue = Number(h.goal_value) || 1;
+        const progress = Math.min(100, Math.round((logValue / goalValue) * 100));
+        const icon = progress >= 100 ? "✅" : progress > 0 ? "🔥" : "⏳";
+        return `${icon} <b>${h.name}</b>: ${logValue}/${goalValue} ${h.unit} (${progress}%)`;
       });
 
       await sendTelegram(chatId, `🔥 <b>THÓI QUEN HÔM NAY</b>\n\n${report.join("\n")}`, inGroup ? msgId : undefined);
@@ -162,67 +236,116 @@ Deno.serve(async (req: Request) => {
 
     // Bỏ qua rác trong nhóm
     if (inGroup && !cmd.startsWith("/")) {
-      const isAction = /\d/.test(text) || /(đã|xong|rồi|nước|sách|gym|chạy)/i.test(text);
+      const isAction = /\d/.test(text) || HABIT_KEYWORDS.test(text) || MONEY_PATTERNS.test(text);
       if (!isAction) return new Response("OK", { status: 200 });
     }
 
     // =====================
-    // XỬ LÝ AI
+    // SMART ROUTING: Pre-detect trước, gọi AI chuyên biệt sau
     // =====================
     await sendTyping(chatId);
-    const result = await processWithAI(text);
-    if (!result || result.type === "unknown") {
-      if (!inGroup) await sendTelegram(chatId, "🤔 Mình chưa hiểu ý bạn lắm.");
-      return new Response("OK", { status: 200 });
-    }
+    const detected = preDetectType(text);
+    console.log(`[PRE-DETECT] "${text}" → ${detected}`);
 
-    // Case 1: Ghi giao dịch tài chính
-    if (result.type === "transaction") {
-      const { error } = await supabase.from("transactions").insert({
-        user_id: FINHABIT_USER_ID,
-        title: result.data.title,
-        amount: result.data.amount,
-        category: result.data.category,
-        type: result.data.tx_type,
-        date: getVNDate(),
-      });
-      if (error) throw error;
-      const emoji = result.data.tx_type === "income" ? "💰" : result.data.tx_type === "saving" ? "🐷" : "💸";
-      await sendTelegram(chatId, `✅ <b>${firstName}</b> đã ghi:\n${emoji} ${result.data.title}: ${formatVND(result.data.amount)}`, inGroup ? msgId : undefined);
-    } 
-    
-    // Case 2: Ghi thói quen
-    else if (result.type === "habit") {
-      const habitName = result.data.habit_name.toLowerCase();
-      // Tìm thói quen tương ứng trong DB
+    // --- HABIT ---
+    if (detected === "habit") {
+      const aiResult = await categorizeHabit(text);
+      if (!aiResult) {
+        if (!inGroup) await sendTelegram(chatId, "🤔 Mình chưa hiểu ý bạn lắm. Thử lại nhé!");
+        return new Response("OK", { status: 200 });
+      }
+
       const { data: habits } = await supabase.from("habits").select("*").eq("user_id", FINHABIT_USER_ID);
-      const habit = habits?.find((h: any) => h.name.toLowerCase().includes(habitName) || habitName.includes(h.name.toLowerCase()));
+      const habit = findMatchingHabit(habits || [], aiResult.habit_name);
 
       if (!habit) {
-        await sendTelegram(chatId, `🤷‍♂️ Mình không tìm thấy thói quen "<b>${result.data.habit_name}</b>" trên Web. Bạn tạo trước nhé!`, inGroup ? msgId : undefined);
+        await sendTelegram(chatId,
+          `🤷 Không tìm thấy thói quen "<b>${aiResult.habit_name}</b>" trong danh sách.\n\n` +
+          `📋 Thói quen hiện có:\n${(habits || []).map((h: any) => `• ${h.name}`).join("\n") || "(trống)"}\n\n` +
+          `💡 Hãy tạo thói quen trên Web trước nhé!`,
+          inGroup ? msgId : undefined
+        );
         return new Response("OK", { status: 200 });
       }
 
       const today = getVNDate();
       const { data: existingLog } = await supabase.from("habit_logs").select("*").eq("habit_id", habit.id).eq("date", today).single();
 
-      const newValue = (existingLog?.value || 0) + result.data.value;
+      const addedValue = Number(aiResult.value) || 1;
+      const newValue = (Number(existingLog?.value) || 0) + addedValue;
+
       const { error } = await supabase.from("habit_logs").upsert({
         id: existingLog?.id,
         habit_id: habit.id,
         user_id: FINHABIT_USER_ID,
         date: today,
-        value: newValue
+        value: newValue,
       });
 
       if (error) throw error;
-      const progress = Math.min(100, Math.round((newValue / habit.goal_value) * 100));
-      await sendTelegram(chatId, `✅ <b>${firstName}</b> — Đã cập nhật thói quen!\n\n🌿 <b>${habit.name}</b>: +${result.data.value} ${habit.unit}\n📈 Tiến độ: ${newValue}/${habit.goal_value} (${progress}%)\n\n💬 ${result.message}`, inGroup ? msgId : undefined);
+
+      const goalValue = Number(habit.goal_value) || 1;
+      const progress = Math.min(100, Math.round((newValue / goalValue) * 100));
+      const progressBar = progress >= 100 ? "🎉 HOÀN THÀNH!" : `${progress}%`;
+
+      await sendTelegram(chatId,
+        `✅ ${inGroup ? `<b>${firstName}</b> — ` : ""}Đã ghi thói quen!\n\n` +
+        `🌿 <b>${habit.name}</b>: +${addedValue} ${habit.unit}\n` +
+        `📈 Tiến độ: ${newValue}/${goalValue} ${habit.unit} (${progressBar})\n\n` +
+        `💬 ${aiResult.message || "Tiếp tục cố gắng nhé! 💪"}`,
+        inGroup ? msgId : undefined
+      );
+      return new Response("OK", { status: 200 });
     }
 
+    // --- TRANSACTION ---
+    if (detected === "transaction") {
+      const aiResult = await categorizeTransaction(text);
+      if (!aiResult) {
+        if (!inGroup) await sendTelegram(chatId, "🤔 Mình chưa hiểu ý bạn lắm. Thử lại nhé!");
+        return new Response("OK", { status: 200 });
+      }
+
+      const { error } = await supabase.from("transactions").insert({
+        user_id: FINHABIT_USER_ID,
+        title: aiResult.title,
+        amount: aiResult.amount,
+        category: aiResult.category,
+        type: aiResult.tx_type,
+        date: getVNDate(),
+      });
+
+      if (error) throw error;
+
+      const emoji = aiResult.tx_type === "income" ? "💰" : aiResult.tx_type === "saving" ? "🐷" : "💸";
+      const label = aiResult.tx_type === "income" ? "Thu nhập" : aiResult.tx_type === "saving" ? "Tiết kiệm" : "Chi tiêu";
+      const sign = aiResult.tx_type === "income" ? "+" : "-";
+
+      await sendTelegram(chatId,
+        `✅ ${inGroup ? `<b>${firstName}</b> — ` : ""}Đã ghi!\n\n` +
+        `${emoji} <b>${aiResult.title}</b>\n` +
+        `💵 ${sign}${formatVND(aiResult.amount)}\n` +
+        `📂 ${aiResult.category} · ${label}`,
+        inGroup ? msgId : undefined
+      );
+      return new Response("OK", { status: 200 });
+    }
+
+    // --- UNKNOWN: gửi cho AI chung phân loại ---
+    if (!inGroup) {
+      await sendTelegram(chatId,
+        `🤔 Mình chưa hiểu ý bạn lắm.\n\n` +
+        `💡 <b>Thử nhắn:</b>\n` +
+        `• <i>"Ăn trưa 50k"</i> — ghi chi tiêu\n` +
+        `• <i>"Đọc sách 30 phút"</i> — ghi thói quen\n` +
+        `• /habits — xem thói quen hôm nay\n` +
+        `• /status — xem tài chính`
+      );
+    }
     return new Response("OK", { status: 200 });
+
   } catch (err) {
-    console.error(err);
+    console.error("Webhook error:", err);
     return new Response("OK", { status: 200 });
   }
 });
