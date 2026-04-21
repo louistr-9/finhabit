@@ -16,7 +16,7 @@ export async function getDashboardOverview() {
   if (!user) {
     return {
       chartData: [],
-      quickStats: { balance: 0, monthlySpent: 0, habitCount: '0/0', streak: 0 },
+      quickStats: { balance: 0, monthlySpent: 0, totalSavings: 0, habitCount: '0/0', streak: 0 },
       habits: []
     };
   }
@@ -38,24 +38,34 @@ export async function getDashboardOverview() {
     .select('amount, type, date')
     .order('date', { ascending: true });
 
-  let balance = 0;
+  // Lấy số dư ban đầu từ user metadata
+  const initialBalance = Number(user.user_metadata?.initial_balance) || 0;
+
+  let balance = initialBalance;
   let monthlySpent = 0;
+  let totalSavings = 0;
 
   // For Chart (Last 7 days)
-  const last7DaysMap = new Map<string, { income: number; spend: number }>();
+  const last7DaysMap = new Map<string, { income: number; spend: number; saving: number }>();
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const dateKey = getVNTime(d);
-    last7DaysMap.set(dateKey, { income: 0, spend: 0 });
+    last7DaysMap.set(dateKey, { income: 0, spend: 0, saving: 0 });
   }
 
 
   if (transactions) {
     transactions.forEach(t => {
       // Balance
-      if (t.type === 'income') balance += t.amount;
-      else balance -= t.amount;
+      if (t.type === 'income') {
+        balance += t.amount;
+      } else {
+        balance -= t.amount;
+        if (t.type === 'saving') {
+          totalSavings += t.amount;
+        }
+      }
 
       // Monthly Spent
       const [y, m] = t.date.split('-');
@@ -67,6 +77,7 @@ export async function getDashboardOverview() {
       if (last7DaysMap.has(t.date)) {
         const current = last7DaysMap.get(t.date)!;
         if (t.type === 'income') current.income += t.amount;
+        else if (t.type === 'saving') current.saving += t.amount;
         else current.spend += t.amount;
         last7DaysMap.set(t.date, current);
       }
@@ -80,7 +91,8 @@ export async function getDashboardOverview() {
     return {
       name: dayName,
       income: values.income,
-      spend: values.spend
+      spend: values.spend,
+      saving: values.saving
     };
   });
 
@@ -91,8 +103,10 @@ export async function getDashboardOverview() {
     quickStats: {
       balance,
       monthlySpent: monthlySpent || 0,
+      totalSavings: totalSavings || 0,
       habitCount: `${doneHabitsCount}/${totalHabits}`,
-      streak: achievements.currentStreak || 0
+      streak: achievements.currentStreak || 0,
+      monthlyBudget: Number(user.user_metadata?.monthly_budget) || 0,
     },
     habits
   };

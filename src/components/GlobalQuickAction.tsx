@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Plus, Wallet, CheckSquare, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 
 export function GlobalQuickAction() {
   const [isOpen, setIsOpen] = useState(false);
@@ -18,18 +19,26 @@ export function GlobalQuickAction() {
             transition={{ duration: 0.2 }}
             className="absolute bottom-[calc(100%+16px)] left-0 min-w-[200px] p-2 bg-card rounded-[var(--radius-lg)] shadow-soft-hover border border-[var(--border)] z-50 flex flex-col gap-1"
           >
-            <button className="flex items-center gap-3 w-full px-3 py-2.5 text-sm font-medium text-foreground hover:bg-slate-50 hover:text-emerald-teal rounded-md transition-colors text-left group">
+            <Link 
+              href="/finance"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-3 w-full px-3 py-2.5 text-sm font-medium text-foreground hover:bg-slate-50 hover:text-emerald-teal rounded-md transition-colors text-left group"
+            >
               <div className="bg-emerald-teal/10 p-1.5 rounded-md group-hover:bg-emerald-teal/20 transition-colors">
                 <Wallet className="h-4 w-4 text-emerald-teal" strokeWidth={1.5} />
               </div>
               Thêm giao dịch
-            </button>
-            <button className="flex items-center gap-3 w-full px-3 py-2.5 text-sm font-medium text-foreground hover:bg-slate-50 hover:text-deep-violet rounded-md transition-colors text-left group">
+            </Link>
+            <Link 
+              href="/habit"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-3 w-full px-3 py-2.5 text-sm font-medium text-foreground hover:bg-slate-50 hover:text-deep-violet rounded-md transition-colors text-left group"
+            >
               <div className="bg-deep-violet/10 p-1.5 rounded-md group-hover:bg-deep-violet/20 transition-colors">
                 <CheckSquare className="h-4 w-4 text-deep-violet" strokeWidth={1.5} />
               </div>
               Thêm thói quen
-            </button>
+            </Link>
           </motion.div>
         )}
       </AnimatePresence>

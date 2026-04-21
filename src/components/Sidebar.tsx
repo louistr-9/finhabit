@@ -6,12 +6,12 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, CheckSquare, BarChart3,
-  LogOut, ChevronUp, Bell, CreditCard,
+  LogOut, Bell, CreditCard, ChevronUp, ChevronDown, User, Palette
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { GlobalQuickAction } from './GlobalQuickAction';
 import { logout } from '@/app/(auth)/login/actions';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 const navItems = [
   { label: 'Tổng quan', icon: LayoutDashboard, href: '/dashboard' },
@@ -46,11 +46,72 @@ function MiniSwitch({ checked, onChange }: { checked: boolean; onChange: () => v
   );
 }
 
+// Custom dropdown for theme selection
+function ThemeDropdown({ theme, setTheme }: { theme: string; setTheme: (val: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const options = [
+    { id: 'light', label: 'Sáng' },
+    { id: 'dark', label: 'Tối' },
+    { id: 'warm', label: 'Ấm' }
+  ];
+  
+  const current = options.find(o => o.id === theme) || options[0];
+  const others = options.filter(o => o.id !== theme);
+
+  return (
+    <div className="relative flex items-center">
+      <button 
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="flex items-center gap-1.5 text-[11px] font-medium text-foreground/50 hover:text-foreground transition-colors outline-none cursor-pointer"
+      >
+        <span>{current.label}</span>
+        <ChevronDown className={cn("w-3 h-3 transition-transform", open && "rotate-180")} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.15 }}
+            className="absolute top-full right-0 mt-2 bg-card border border-[var(--border)] rounded-md shadow-lg overflow-hidden z-[60] min-w-[70px]"
+          >
+            {others.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTheme(opt.id);
+                  setOpen(false);
+                }}
+                className="w-full text-right px-3 py-2 text-[11px] font-medium text-foreground/70 hover:text-foreground hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                {opt.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useLocalStorage('theme', 'light');
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.remove('light', 'dark', 'warm');
+      if (theme !== 'light') {
+        document.documentElement.classList.add(theme);
+      }
+    }
+  }, [theme]);
 
   const initials = displayName
     .split(' ')
@@ -111,13 +172,11 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
       </nav>
 
       {/* Bottom section */}
-      <div className="mt-auto flex flex-col gap-3">
-        <GlobalQuickAction />
-
+      <div className="mt-auto flex flex-col gap-2">
         {/* User card + popup menu */}
         <div ref={menuRef} className="relative">
 
-          {/* Popup — hiện phía trên user card */}
+          {/* Popup */}
           <AnimatePresence>
             {menuOpen && (
               <motion.div
@@ -125,47 +184,59 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 6, scale: 0.97 }}
                 transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="absolute bottom-[calc(100%+8px)] left-0 right-0 bg-card border border-[var(--border)] rounded-xl shadow-soft-hover overflow-hidden z-50"
+                className="absolute bottom-[calc(100%+8px)] left-0 right-0 bg-card border border-[var(--border)] rounded-xl shadow-soft-hover overflow-hidden z-50 py-1"
               >
+                {/* Tài khoản */}
+                <Link
+                  href="/settings"
+                  onClick={() => setMenuOpen(false)}
+                  className="group flex w-full items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
+                    <User className="w-3.5 h-3.5 text-indigo-500" strokeWidth={1.5} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">Tài khoản</p>
+                    <p className="text-[11px] text-foreground/50 truncate">Quản lý cá nhân</p>
+                  </div>
+                </Link>
+
                 {/* Thông báo đẩy */}
-                <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
+                <div className="flex items-center gap-3 px-4 py-3 border-t border-[var(--border)]">
                   <div className="w-7 h-7 rounded-lg bg-emerald-teal/10 flex items-center justify-center shrink-0">
                     <Bell className="w-3.5 h-3.5 text-emerald-teal" strokeWidth={1.5} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">Thông báo đẩy</p>
-                    <p className="text-[10px] text-foreground/50 truncate">Nhắc nhở nhập liệu</p>
+                    <p className="text-sm font-semibold text-foreground truncate">Thông báo đẩy</p>
+                    <p className="text-[11px] text-foreground/50 truncate">Nhắc nhở nhập liệu</p>
                   </div>
                   <MiniSwitch checked={notifications} onChange={() => setNotifications(p => !p)} />
                 </div>
 
+                {/* Màu chủ đề */}
+                <div className="flex items-center gap-3 px-4 py-3 border-t border-[var(--border)]">
+                  <div className="w-7 h-7 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
+                    <Palette className="w-3.5 h-3.5 text-orange-500" strokeWidth={1.5} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">Giao diện</p>
+                  </div>
+                  <ThemeDropdown theme={theme} setTheme={setTheme} />
+                </div>
+
                 {/* Gói đăng ký */}
-                <button className="group flex w-full items-center gap-3 px-4 py-3 border-b border-[var(--border)] hover:bg-slate-50 transition-colors text-left">
+                <button className="group flex w-full items-center gap-3 px-4 py-3 border-t border-[var(--border)] hover:bg-slate-50 transition-colors text-left">
                   <div className="w-7 h-7 rounded-lg bg-deep-violet/10 flex items-center justify-center shrink-0">
                     <CreditCard className="w-3.5 h-3.5 text-deep-violet" strokeWidth={1.5} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">Gói đăng ký</p>
-                    <p className="text-[10px] text-foreground/50 truncate">Free Plan</p>
+                    <p className="text-sm font-semibold text-foreground truncate">Gói đăng ký</p>
+                    <p className="text-[11px] text-foreground/50 truncate">Free Plan</p>
                   </div>
                   <span className="text-[10px] font-bold bg-emerald-teal/10 text-emerald-teal px-2 py-0.5 rounded-full shrink-0">
                     Free
                   </span>
                 </button>
-
-                {/* Đăng xuất */}
-                <form action={logout}>
-                  <button
-                    type="submit"
-                    className="group flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors duration-150"
-                  >
-                    <LogOut
-                      strokeWidth={1.5}
-                      className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5"
-                    />
-                    Đăng xuất
-                  </button>
-                </form>
               </motion.div>
             )}
           </AnimatePresence>
@@ -207,6 +278,22 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
             </motion.div>
           </button>
         </div>
+
+        <div className="h-px w-full bg-[var(--border)] my-1"></div>
+
+        {/* Đăng xuất */}
+        <form action={logout}>
+          <button
+            type="submit"
+            className="group flex w-full items-center gap-3 px-3 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors duration-150"
+          >
+            <LogOut
+              strokeWidth={1.5}
+              className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5"
+            />
+            Đăng xuất
+          </button>
+        </form>
       </div>
     </aside>
   );

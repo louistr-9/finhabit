@@ -1,87 +1,98 @@
-# 💎 FinHabit - Smart Finance & Habit Tracker
+# 💎 FinHabit — Smart Finance & Habit Tracker
 
-[![Next.js](https://img.shields.io/badge/Next.js-15+-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
-[![Supabase](https://img.shields.io/badge/Supabase-Database-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-38B2AC?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![Google Gemini](https://img.shields.io/badge/Google_Gemini-AI-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
+[![Next.js](https://img.shields.io/badge/Next.js_16-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS_v4-38B2AC?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Telegram](https://img.shields.io/badge/Telegram_Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/your_bot)
 
-**FinHabit** là một nền tảng quản lý tài chính cá nhân và theo dõi thói quen hiện đại, được tích hợp trí tuệ nhân tạo (AI) để giúp người dùng tối ưu hóa lối sống và tài chính một cách thông minh và tinh tế.
+> **FinHabit** là nền tảng quản lý tài chính cá nhân và theo dõi thói quen hiện đại, tích hợp AI hội thoại và Telegram Bot để giúp người dùng tối ưu hóa tài chính gia đình một cách thông minh nhất.
 
 ---
 
 ## ✨ Tính Năng Nổi Bật
 
-### 🤖 Trợ Lý Tài Chính AI (Google Gemini)
-*   **Tự động phân loại**: AI tự động nhận diện và phân loại giao dịch từ mô tả của người dùng (ví dụ: "ăn sáng 50k" -> Danh mục: Ăn uống).
-*   **Xử lý ngôn ngữ tự nhiên**: Hiểu các câu lệnh phức tạp và tự động tách thông tin về số tiền, tiêu đề và loại giao dịch.
-*   **Cơ chế Fallback thông minh**: Đảm bảo hệ thống vẫn hoạt động mượt mà ngay cả khi AI hết quota bằng logic Regex tối ưu.
+### 🤖 1. AIChatbot (Trợ lý hội thoại)
+*   **Conversational AI**: Không chỉ là parser đơn giản, Chatbot hỗ trợ hội thoại có lịch sử tin nhắn.
+*   **3 Chế độ thông minh**:
+    *   **Giao dịch**: "Ăn sáng 30k", "Vừa nhận lương 15tr".
+    *   **Thói quen**: "Mình muốn tạo thói quen tập gym mỗi sáng".
+    *   **Tư vấn**: Hỏi đáp về tình hình tài chính hoặc lời khuyên sức khỏe.
+*   **Action Cards**: Hiển thị thẻ xác nhận trực quan ngay trong chat trước khi lưu dữ liệu.
 
-### 🔥 Theo Dõi Thói Quen (Habit Streaks)
-*   **Hệ thống Streak chuyên sâu**: Tính toán chuỗi thói quen (streak) dựa trên ngưỡng hoàn thành 50% mỗi ngày.
-*   **Heatmap đóng góp**: Trực quan hóa tiến trình thói quen qua biểu đồ nhiệt tương tự GitHub.
-*   **Gợi ý thói quen từ AI**: Đề xuất thói quen khoa học dựa trên mục tiêu cá nhân của bạn.
+### 📱 2. Telegram Bot (Shared Household Mode)
+*   **Family Sync**: Chế độ dùng chung cho gia đình. Một người làm chủ, cả nhà nhắn tin vào nhóm chung, dữ liệu tự động đổ về 1 tài khoản.
+*   **Smart Filtering**: Bot tự động bỏ qua các tin nhắn nói chuyện phiếm, chỉ "lắng nghe" và xử lý các tin nhắn có số tiền hoặc giao dịch.
+*   **AI Categorization**: Tự động phân loại danh mục ngay từ tin nhắn Telegram bằng Gemini 1.5-Flash.
+*   **Báo cáo nhanh**: Gửi `/today` hoặc `/month` ngay trong Telegram để xem tổng chi tiêu cả nhà.
 
-### 📊 Dashboard Tổng Quan & Analytics
-*   **Insight 2-trong-1**: Theo dõi cả biến động số dư tài chính và tỉ lệ hoàn thành thói quen trên cùng một giao diện.
-*   **Biểu đồ tương tác**: Sử dụng Recharts để hiển thị xu hướng thu chi hàng tuần/tháng một cách sinh động.
-*   **Thông báo Real-time**: Cập nhật trạng thái ngay lập tức khi thói quen được hoàn thành.
+### 📊 3. Dashboard Tổng Quan & Cảnh Báo
+*   **Thống kê thời gian thực**: Số dư, Chi tiêu, Tiết kiệm, Chuỗi thói quen.
+*   **Financial Health Alert**: Tự động đổi màu cảnh báo dựa trên ngân sách tháng (Teal → Orange → Rose).
+*   **Streak Tracking**: Tag chuỗi duy trì nhấp nháy khi sắp đứt chuỗi (sau 20:00).
+*   **Privacy Mode**: Ẩn/hiện số dư để bảo mật khi sử dụng ở nơi công cộng.
 
-### 🎨 Trải Nghiệm Người Dùng Cao Cấp
-*   **Giao diện Glassmorphism**: Thiết kế hiện đại với hiệu ứng mờ kính và độ sâu tinh tế.
-*   **Animation mượt mà**: Tích hợp Framer Motion cho mọi chuyển động và chuyển cảnh.
-*   **Dark Mode chuẩn**: Tối ưu cho trải nghiệm ban đêm, giúp bảo vệ mắt và tăng tính thẩm mỹ.
+### 🔥 4. Theo Dõi Thói Quen (Habits)
+*   **Hệ thống Streak**: Tính chuỗi dựa trên ngưỡng hoàn thành ≥ 50%.
+*   **Heatmap**: Trực quan hóa tiến trình kiểu GitHub Contributions.
+*   **Hiệu ứng Confetti**: Ăn mừng khi hoàn thành tất cả mục tiêu trong ngày 🎉.
 
 ---
 
 ## 🛠 Công Nghệ Sử Dụng
 
-| Lớp | Công Nghệ |
-| :--- | :--- |
-| **Frontend** | Next.js 15 (App Router), React 19 |
-| **Backend** | Supabase (PostgreSQL, Auth, SSR) |
-| **AI Engine** | Google Gemini (Gemini 2.5 Flash) |
-| **Styling** | Tailwind CSS v4, Framer Motion |
-| **Visualization** | Recharts, Lucide Icons |
+| Lớp | Công Nghệ | Phiên bản |
+| :--- | :--- | :--- |
+| **Framework** | Next.js (App Router, Turbopack) | 16.2.3 |
+| **Backend** | Supabase (Postgres, Auth, SSR, Edge Functions) | Latest |
+| **AI Engine** | Google Gemini (1.5-Flash) | Latest |
+| **Telegram API**| Telegram Webhook + Edge Functions | Latest |
+| **Styling** | Tailwind CSS v4 + Framer Motion | Latest |
 
 ---
 
-## 🚀 Cài Đặt & Chạy Thử
+## 🚀 Telegram Bot Setup (Dành cho gia đình)
 
-### 1. Clone Project
-```bash
-git clone https://github.com/your-username/finhabit.git
-cd finhabit
-```
+Để sử dụng Bot cho cả nhà ghi chép vào cùng 1 tài khoản:
 
-### 2. Cài Đặt Dependencies
-```bash
-npm install
-```
-
-### 3. Cấu Hình Biến Môi Trường
-Tạo file `.env.local` ở thư mục gốc và cung cấp các thông tin sau:
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-GEMINI_API_KEY=your_google_gemini_api_key
-```
-
-### 4. Khởi Chạy Dev Server
-```bash
-npm run dev
-```
-Truy cập tại: `http://localhost:3000`
+1.  **Tạo Bot**: Qua `@BotFather`, lấy `TELEGRAM_BOT_TOKEN`.
+2.  **Tắt Privacy Mode**: Chat với `@BotFather` → `/setprivacy` → Chọn Bot → **Disable**.
+3.  **Deploy Edge Function**:
+    ```bash
+    npx supabase functions deploy telegram-webhook --no-verify-jwt
+    ```
+4.  **Cấu hình Secret**:
+    ```bash
+    supabase secrets set TELEGRAM_BOT_TOKEN=... GEMINI_API_KEY=... FINHABIT_USER_ID=...
+    ```
+5.  **Thêm vào nhóm**: Thêm Bot vào nhóm gia đình/bạn bè và bắt đầu nhắn: *"Cafe 30k"*!
 
 ---
 
-## 📸 Ảnh Chụp Màn Hình (Sắp có)
-*Dashboard, Finance Page, Habit Tracker, và AI Assistant sẽ được hiển thị tại đây.*
+## 📁 Cấu Trúc Dự Án
+
+```
+src/
+├── app/
+│   ├── (dashboard)/         # Dashboard, Finance, Habits, Settings
+│   ├── actions/             # Unified AI & Server Actions
+│   └── globals.css          # Design tokens & Themes
+├── components/
+│   ├── AIChatbot.tsx       # Conversational Interface
+│   └── ...                 # UI Components
+supabase/
+└── functions/
+    └── telegram-webhook/    # Logic Telegram Bot (Edge Function)
+```
 
 ---
 
-## 📝 Giấy Phép
+## 📝 Giấy Phép & Tác Giả
+
 Dự án được phát hành dưới giấy phép **MIT**.
 
----
+<div align="center">
 
-**FinHabit** - *Habits Build Your Life, Finance Secures Your Future.* 🚀
+**FinHabit** — *Habits Build Your Life, Finance Secures Your Future.* 🚀
+
+</div>

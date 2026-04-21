@@ -45,14 +45,16 @@ export async function addTransaction(formData: FormData) {
   const amountStr = formData.get('amount') as string;
   const amount = Number(amountStr.replace(/\D/g, ''));
   const categoryInput = formData.get('category') as string;
-  const type = formData.get('type') as 'income' | 'expense';
+  const type = formData.get('type') as 'income' | 'expense' | 'saving';
   const date = formData.get('date') as string;
 
   let category = categoryInput;
   let title = titleInput?.trim();
 
   if (!title) {
-    category = type === 'income' ? 'Thu nhập khác' : 'Chi tiêu khác';
+    if (type === 'income') category = 'Quà tặng & Thu nhập khác';
+    else if (type === 'saving') category = 'Bỏ heo/Tiết kiệm tự do';
+    else category = 'Chi tiêu khác';
     title = category;
   }
 
@@ -102,14 +104,16 @@ export async function updateTransaction(id: string, formData: FormData) {
   const amountStr = formData.get('amount') as string;
   const amount = Number(amountStr.replace(/\D/g, ''));
   const categoryInput = formData.get('category') as string;
-  const type = formData.get('type') as 'income' | 'expense';
+  const type = formData.get('type') as 'income' | 'expense' | 'saving';
   const date = formData.get('date') as string;
 
   let category = categoryInput;
   let title = titleInput?.trim();
 
   if (!title) {
-    category = type === 'income' ? 'Thu nhập khác' : 'Chi tiêu khác';
+    if (type === 'income') category = 'Quà tặng & Thu nhập khác';
+    else if (type === 'saving') category = 'Bỏ heo/Tiết kiệm tự do';
+    else category = 'Chi tiêu khác';
     title = category;
   }
 
@@ -133,10 +137,13 @@ export async function updateTransaction(id: string, formData: FormData) {
 
 export async function getBalanceHubData() {
   const supabase = await createClient();
+  const user = await getCachedUser();
+  if (!user) return { balance: 0, monthlyIncome: 0, monthlySpent: 0, totalSavings: 0 };
 
   const { data: allTx, error: allErr } = await supabase
     .from('transactions')
-    .select('amount, type');
+    .select('amount, type')
+    .eq('user_id', user.id);
 
   if (allErr) {
     console.error('Error fetching balance:', allErr.message);
@@ -152,26 +159,37 @@ export async function getBalanceHubData() {
   const { data: monthIncomeTx } = await supabase
     .from('transactions')
     .select('amount')
+    .eq('user_id', user.id)
     .eq('type', 'income')
     .gte('date', startDate)
-    .lte('date', endDate);
+    .lte('date', `${endDate}T23:59:59.999Z`);
 
   const { data: monthSpentTx } = await supabase
     .from('transactions')
-    .select('amount')
-    .eq('type', 'expense')
+    .select('amount, type')
+    .eq('user_id', user.id)
+    .in('type', ['expense', 'saving'])
     .gte('date', startDate)
-    .lte('date', endDate);
+    .lte('date', `${endDate}T23:59:59.999Z`);
 
-  let balance = 0;
+  const initialBalance = Number(user.user_metadata?.initial_balance) || 0;
+  let balance = initialBalance;
+  let totalSavings = 0;
   (allTx ?? []).forEach((t) => {
-    balance += t.type === 'income' ? t.amount : -t.amount;
+    if (t.type === 'income') {
+      balance += t.amount;
+    } else {
+      balance -= t.amount;
+      if (t.type === 'saving') {
+        totalSavings += t.amount;
+      }
+    }
   });
 
   const monthlyIncome = (monthIncomeTx ?? []).reduce((sum, t) => sum + t.amount, 0);
-  const monthlySpent = (monthSpentTx ?? []).reduce((sum, t) => sum + t.amount, 0);
+  const monthlySpent = (monthSpentTx ?? []).filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
-  return { balance, monthlyIncome, monthlySpent };
+  return { balance, monthlyIncome, monthlySpent, totalSavings };
 }
 
 export async function getWeeklyOverview() {
@@ -181,7 +199,7 @@ export async function getWeeklyOverview() {
 
   const todayStr = getVNTime();
   const localToday = new Date();
-  
+
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
   const startDate = getVNTime(sevenDaysAgo);
@@ -192,13 +210,15 @@ export async function getWeeklyOverview() {
     .select('amount, type, date')
     .eq('user_id', user.id)
     .gte('date', startDate)
-    .lte('date', endDate);
+    .lte('date', `${endDate}T23:59:59.999Z`);
 
-  const txMap = new Map<string, { spend: number, income: number }>();
+  const txMap = new Map<string, { spend: number, income: number, saving: number }>();
   (transactions ?? []).forEach(t => {
-    const d = t.date;
-    const existing = txMap.get(d) || { spend: 0, income: 0 };
+    // Normalize date string to YYYY-MM-DD to handle ISO timestamps from database
+    const d = t.date.split('T')[0];
+    const existing = txMap.get(d) || { spend: 0, income: 0, saving: 0 };
     if (t.type === 'expense') existing.spend += t.amount;
+    else if (t.type === 'saving') existing.saving += t.amount;
     else existing.income += t.amount;
     txMap.set(d, existing);
   });
@@ -211,12 +231,13 @@ export async function getWeeklyOverview() {
     d.setDate(d.getDate() - (6 - i));
     const dStr = getVNTime(d);
     const dayName = dayNames[d.getDay()];
-    const stats = txMap.get(dStr) || { spend: 0, income: 0 };
+    const stats = txMap.get(dStr) || { spend: 0, income: 0, saving: 0 };
     chartData.push({
       name: dayName,
       fullDate: dStr,
       spend: stats.spend,
-      income: stats.income
+      income: stats.income,
+      saving: stats.saving
     });
   }
 
@@ -228,10 +249,11 @@ export async function getWeeklyOverview() {
 // TÍNH NĂNG AI (GEMINI)
 // ==========================================
 
-function validateCategory(output: string, type: 'income' | 'expense'): string {
+function validateCategory(output: string, type: 'income' | 'expense' | 'saving'): string {
   try {
-    const expenseCategories = ['Thiết yếu', 'Ăn uống', 'Mua sắm', 'Di chuyển', 'Giải trí', 'Sức khỏe', 'Tiền nhà', 'Chi tiêu khác'];
-    const incomeCategories = ['Tiền lương', 'Thu nhập phụ', 'Tiền thưởng', 'Đầu tư', 'Thu nhập khác'];
+    const expenseCategories = ['Ăn uống', 'Di chuyển', 'Nhà cửa & Hóa đơn', 'Mua sắm', 'Sức khỏe', 'Giải trí & Quan hệ', 'Học tập & Phát triển', 'Chi tiêu khác'];
+    const incomeCategories = ['Lương & Thưởng', 'Làm thêm (Freelance)', 'Quà tặng & Thu nhập khác', 'Lãi & Cổ tức'];
+    const savingCategories = ['Quỹ dự phòng', 'Tích lũy dài hạn', 'Đầu tư', 'Bỏ heo/Tiết kiệm tự do'];
 
     const normalizedOutput = (output || '').trim().toLowerCase();
 
@@ -242,20 +264,25 @@ function validateCategory(output: string, type: 'income' | 'expense'): string {
 
     if (type === 'income') {
       const match = incomeCategories.find(c => c.toLowerCase() === normalizedOutput);
-      return match || 'Thu nhập khác';
+      return match || 'Quà tặng & Thu nhập khác';
+    }
+
+    if (type === 'saving') {
+      const match = savingCategories.find(c => c.toLowerCase() === normalizedOutput);
+      return match || 'Bỏ heo/Tiết kiệm tự do';
     }
 
     return 'Chi tiêu khác';
   } catch (error) {
     console.error('Lỗi khi xử lý danh mục từ AI:', error);
-    return type === 'income' ? 'Thu nhập khác' : 'Chi tiêu khác';
+    return type === 'income' ? 'Quà tặng & Thu nhập khác' : 'Chi tiêu khác';
   }
 }
 
 export interface AICategorizeResult {
   title: string;
   amount: number;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'saving';
   category: string;
 }
 
@@ -268,7 +295,7 @@ export async function aiCategorize(title: string): Promise<AICategorizeResult> {
     title,
     amount: 0,
     type: guessedType,
-    category: guessedType === 'income' ? 'Thu nhập khác' : 'Chi tiêu khác'
+    category: guessedType === 'income' ? 'Quà tặng & Thu nhập khác' : 'Chi tiêu khác'
   };
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -276,7 +303,7 @@ export async function aiCategorize(title: string): Promise<AICategorizeResult> {
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-1.5-flash",
     generationConfig: { responseMimeType: "application/json" }
   });
 
@@ -286,11 +313,11 @@ export async function aiCategorize(title: string): Promise<AICategorizeResult> {
 Input: "${title}"
 
 Quy tắc:
-1. "type": Chọn "income" (nếu là nhận tiền, lương, thưởng, lãi) hoặc "expense" (nếu là mua sắm, trả tiền, ăn uống, đổ xăng, chi trả).
+1. "type": Chọn "income" (nếu là nhận tiền, lương, thưởng, lãi), "expense" (chi trả, mua sắm) hoặc "saving" (tiết kiệm, gửi quỹ, đầu tư tích lũy).
 2. "category": Phải CHÍNH XÁC một trong các từ sau:
-   - Dành cho "expense": "Thiết yếu", "Ăn uống", "Mua sắm", "Di chuyển", "Giải trí", "Sức khỏe", "Tiền nhà", "Chi tiêu khác".
-   - Dành cho "income": "Tiền lương", "Thu nhập phụ", "Tiền thưởng", "Đầu tư", "Thu nhập khác".
-   (Ví dụ: "ăn sáng", "cà phê" -> "Ăn uống"; "mua áo", "mua đồ" -> "Mua sắm"; "đổ xăng", "đi grab" -> "Di chuyển").
+   - Dành cho "expense": "Ăn uống", "Di chuyển", "Nhà cửa & Hóa đơn", "Mua sắm", "Sức khỏe", "Giải trí & Quan hệ", "Học tập & Phát triển", "Chi tiêu khác".
+   - Dành cho "income": "Lương & Thưởng", "Làm thêm (Freelance)", "Quà tặng & Thu nhập khác", "Lãi & Cổ tức".
+   - Dành cho "saving": "Quỹ dự phòng", "Tích lũy dài hạn", "Đầu tư", "Bỏ heo/Tiết kiệm tự do".
 3. "title": Tóm tắt ngắn gọn giao dịch (viết hoa chữ cái đầu).
 4. "amount": Số tiền (chỉ chứa chữ số, ví dụ 50k -> 50000, 1tr -> 1000000). Nếu không có số tiền thì trả về 0.
 
@@ -298,7 +325,7 @@ Quy tắc:
 {
   "title": string,
   "amount": number,
-  "type": "income" | "expense",
+  "type": "income" | "expense" | "saving",
   "category": string
 }`;
 
@@ -315,7 +342,7 @@ Quy tắc:
     console.log('Parsed:', parsed);
 
     const aiType = parsed.type?.toLowerCase();
-    const resultType: 'income' | 'expense' = (aiType === 'income' || aiType === 'expense')
+    const resultType: 'income' | 'expense' | 'saving' = (aiType === 'income' || aiType === 'expense' || aiType === 'saving')
       ? aiType
       : guessedType;
 
@@ -336,40 +363,40 @@ Quy tắc:
     if (/(ăn|uống|cà phê|cafe|phở|bún|cơm|bánh|sáng|trưa|tối)/.test(lowerTitle)) {
       fbCategory = 'Ăn uống';
     } else if (/(thịt|cá|bhx|siêu thị|đi chợ|rau|củ|quả|gạo|trứng|sữa|bánh mì)/.test(lowerTitle)) {
-      fbCategory = 'Thiết yếu';
+      fbCategory = 'Ăn uống'; // Changed from 'Thiết yếu' to 'Ăn uống' or 'Chi tiêu khác'
     } else if (/(mua|áo|quần|giày|dép|balo|sắm|tả|bỉm|sữa)/.test(lowerTitle)) {
       fbCategory = 'Mua sắm';
     } else if (/(xăng|grab|taxi|xe|đi lại|gửi xe)/.test(lowerTitle)) {
       fbCategory = 'Di chuyển';
     } else if (/(lương|thưởng|nhận được|tiền lãi|khen thưởng)/.test(lowerTitle)) {
       fbType = 'income';
-      fbCategory = 'Tiền lương';
+      fbCategory = 'Lương & Thưởng';
     } else if (/(thuốc|khám|viện|sức khỏe|gym|tập)/.test(lowerTitle)) {
       fbCategory = 'Sức khỏe';
     } else if (/(phim|chơi|giải trí|xem|truyện)/.test(lowerTitle)) {
-      fbCategory = 'Giải trí';
+      fbCategory = 'Giải trí & Quan hệ';
     } else if (/(nhà|trọ|thuê nhà|tiền nhà|điện|nước|mạng|internet|rác|wifi)/.test(lowerTitle)) {
-      fbCategory = 'Tiền nhà';
+      fbCategory = 'Nhà cửa & Hóa đơn';
     }
     else if (/(lương)/.test(lowerTitle)) {
       fbType = 'income';
-      fbCategory = 'Tiền lương';
+      fbCategory = 'Lương & Thưởng';
     }
     else if (/(phụ|nhận được|tiền lãi)/.test(lowerTitle)) {
       fbType = 'income';
-      fbCategory = 'Thu nhập phụ';
+      fbCategory = 'Quà tặng & Thu nhập khác';
     }
     else if (/(thưởng|khen thưởng)/.test(lowerTitle)) {
       fbType = 'income';
-      fbCategory = 'Tiền thưởng';
+      fbCategory = 'Lương & Thưởng';
     }
     else if (/(đầu tư)/.test(lowerTitle)) {
       fbType = 'income';
-      fbCategory = 'Đầu tư';
+      fbCategory = 'Lãi & Cổ tức';
     }
     else if (/(khác|thu nhập khác)/.test(lowerTitle)) {
       fbType = 'income';
-      fbCategory = 'Thu nhập khác';
+      fbCategory = 'Quà tặng & Thu nhập khác';
     }
 
 
