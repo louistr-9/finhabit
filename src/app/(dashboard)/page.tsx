@@ -28,8 +28,10 @@ export default async function DashboardPage() {
     quickStats: {
       balance: balanceHub.balance || 0,
       monthlySpent: balanceHub.monthlySpent || 0,
+      totalSavings: balanceHub.totalSavings || 0,
       habitCount: `${habitStats.doneCount}/${habitStats.total}`,
       streak: achievements.currentStreak || 0,
+      monthlyBudget: user.user_metadata?.monthly_budget || 0,
     },
     habits: habitStats.habits,
   };

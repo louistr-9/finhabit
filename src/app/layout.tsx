@@ -16,8 +16,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${outfit.variable} antialiased bg-[var(--background)] text-[var(--foreground)]`}>
+    <html lang="vi" suppressHydrationWarning>
+      <head>
+        <script
+          id="theme-script"
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{
+            __html: `try{const s=localStorage.getItem('theme');const t=s?JSON.parse(s):'light';if(t==='dark'||t==='warm')document.documentElement.classList.add(t);}catch(e){}`,
+          }}
+        />
+      </head>
+      <body suppressHydrationWarning className={`${inter.variable} ${outfit.variable} antialiased bg-[var(--background)] text-[var(--foreground)] transition-colors duration-300`}>
         {children}
       </body>
     </html>

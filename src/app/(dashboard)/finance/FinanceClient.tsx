@@ -2,26 +2,43 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Home, Coffee, Zap, Wallet, ShoppingBag, ChevronLeft, ChevronRight, Activity, Calendar, Loader2, Pencil, Trash2, X, AlertTriangle } from 'lucide-react';
-import { getMonthlyTransactions, addTransaction, deleteTransaction, updateTransaction, getBalanceHubData, aiCategorize } from './actions';
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isToday, isBefore, startOfDay } from 'date-fns';
+import { 
+  Home, Coffee, Zap, Wallet, ShoppingBag, ChevronLeft, ChevronRight, 
+  Activity, Calendar, Loader2, Pencil, Trash2, X, AlertTriangle,
+  Car, Heart, Theater, BookOpen, HelpCircle, Landmark, Briefcase, 
+  Gift, TrendingUp, ShieldCheck, Vault, LineChart, PiggyBank, Coins, Eye, EyeOff
+} from 'lucide-react';
+import { getMonthlyTransactions, addTransaction, deleteTransaction, updateTransaction, getBalanceHubData } from './actions';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 
-const EXPENSE_CATEGORIES = ['Thiết yếu', 'Ăn uống', 'Mua sắm', 'Di chuyển', 'Giải trí', 'Sức khỏe', 'Tiền nhà', 'Chi tiêu khác'];
-const INCOME_CATEGORIES = ['Tiền lương', 'Thu nhập phụ', 'Tiền thưởng', 'Đầu tư', 'Thu nhập khác'];
+const EXPENSE_CATEGORIES = ['Ăn uống', 'Di chuyển', 'Nhà cửa & Hóa đơn', 'Mua sắm', 'Sức khỏe', 'Giải trí & Quan hệ', 'Học tập & Phát triển', 'Chi tiêu khác'];
+const INCOME_CATEGORIES = ['Lương & Thưởng', 'Làm thêm (Freelance)', 'Quà tặng & Thu nhập khác', 'Lãi & Cổ tức'];
+const SAVING_CATEGORIES = ['Quỹ dự phòng', 'Tích lũy dài hạn', 'Đầu tư', 'Bỏ heo/Tiết kiệm tự do'];
 
 const CATEGORY_MAP: Record<string, { icon: any, color: string, bg: string }> = {
-  'Thiết yếu': { icon: Zap, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/40' },
+  // Expense
   'Ăn uống': { icon: Coffee, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-100 dark:bg-amber-900/40' },
+  'Di chuyển': { icon: Car, color: 'text-blue-500 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/40' },
+  'Nhà cửa & Hóa đơn': { icon: Home, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-100 dark:bg-indigo-900/40' },
   'Mua sắm': { icon: ShoppingBag, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/40' },
-  'Di chuyển': { icon: Activity, color: 'text-orange-500 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/40' },
-  'Giải trí': { icon: Activity, color: 'text-pink-500 dark:text-pink-400', bg: 'bg-pink-100 dark:bg-pink-900/40' },
-  'Sức khỏe': { icon: Activity, color: 'text-rose-500 dark:text-rose-400', bg: 'bg-rose-100 dark:bg-rose-900/40' },
-  'Tiền nhà': { icon: Home, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
-  'Chi tiêu khác': { icon: Activity, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
-  'Tiền lương': { icon: Wallet, color: 'text-emerald-teal', bg: 'bg-emerald-teal/20 dark:bg-emerald-teal/30' },
-  'Thu nhập phụ': { icon: Wallet, color: 'text-emerald-500 dark:text-emerald-400', bg: 'bg-emerald-500/20 dark:bg-emerald-500/30' },
-  'Tiền thưởng': { icon: Zap, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-600/20 dark:bg-emerald-600/30' },
-  'Đầu tư': { icon: Activity, color: 'text-indigo-500 dark:text-indigo-400', bg: 'bg-indigo-100 dark:bg-indigo-900/40' },
-  'Thu nhập khác': { icon: Wallet, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
+  'Sức khỏe': { icon: Heart, color: 'text-rose-500 dark:text-rose-400', bg: 'bg-rose-100 dark:bg-rose-900/40' },
+  'Giải trí & Quan hệ': { icon: Theater, color: 'text-pink-500 dark:text-pink-400', bg: 'bg-pink-100 dark:bg-pink-900/40' },
+  'Học tập & Phát triển': { icon: BookOpen, color: 'text-cyan-600 dark:text-cyan-400', bg: 'bg-cyan-100 dark:bg-cyan-900/40' },
+  'Chi tiêu khác': { icon: HelpCircle, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
+  
+  // Income
+  'Lương & Thưởng': { icon: Landmark, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-900/40' },
+  'Làm thêm (Freelance)': { icon: Briefcase, color: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-100 dark:bg-teal-900/40' },
+  'Quà tặng & Thu nhập khác': { icon: Gift, color: 'text-orange-500 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/40' },
+  'Lãi & Cổ tức': { icon: TrendingUp, color: 'text-lime-600 dark:text-lime-400', bg: 'bg-lime-100 dark:bg-lime-900/40' },
+
+  // Saving
+  'Quỹ dự phòng': { icon: ShieldCheck, color: 'text-emerald-500 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+  'Tích lũy dài hạn': { icon: Vault, color: 'text-indigo-500 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
+  'Đầu tư': { icon: LineChart, color: 'text-violet-500 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-900/20' },
+  'Bỏ heo/Tiết kiệm tự do': { icon: PiggyBank, color: 'text-pink-500 dark:text-pink-400', bg: 'bg-pink-50 dark:bg-pink-900/20' },
+  'Tiết kiệm khác': { icon: Coins, color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-100 dark:bg-slate-800' },
 };
 
 interface FinanceClientProps {
@@ -38,9 +55,10 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
   const daysInMonth = new Date(year, month, 0).getDate();
   const [selectedDate, setSelectedDate] = useState<number>(new Date().getDate());
   
-  const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense');
+  const [transactionType, setTransactionType] = useState<'expense' | 'income' | 'saving'>('expense');
   const [selectedCategory, setSelectedCategory] = useState<string>('Chi tiêu khác');
   const [isMounted, setIsMounted] = useState(false);
+  const [isBalanceVisible, setIsBalanceVisible] = useLocalStorage('isBalanceVisible', false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -50,7 +68,6 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
   const CURRENT_MONTH = isMounted ? new Date().getMonth() + 1 : initialMonth;
   const CURRENT_YEAR = isMounted ? new Date().getFullYear() : initialYear;
   
-  const [isDetecting, setIsDetecting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [amountDisplay, setAmountDisplay] = useState('');
   
@@ -101,38 +118,15 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
     }
   }, [year, month]);
 
-  const handleTitleBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
-    const title = e.target.value.trim();
-    if (!title) return;
-    setIsDetecting(true);
-    try {
-      const result = await aiCategorize(title);
-      
-      setTransactionType(result.type);
-      setSelectedCategory(result.category);
-      
-      const form = formRef.current;
-      if (form) {
-        const titleInput = form.elements.namedItem('title') as HTMLInputElement;
-        const amountInput = form.elements.namedItem('amount') as HTMLInputElement;
-        
-        if (titleInput && result.title) {
-          titleInput.value = result.title;
-        }
-        if (amountInput && result.amount > 0) {
-          if (!amountDisplay || amountDisplay === '0') {
-             setAmountDisplay(formatInputAmount(result.amount.toString()));
-          }
-        }
-      }
-    } catch (err) {
-      console.error(err);
-    }
-    setIsDetecting(false);
-  };
   
+  const isSubmittingRef = useRef(false);
+
   const handleActionSubmit = async (formData: FormData) => {
+    // Guard against double-submit
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
+
     const formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`;
     formData.append('date', formattedDate);
     formData.append('type', transactionType);
@@ -152,6 +146,7 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
       alert("Lỗi: " + (e.message || "Đã có lỗi xảy ra"));
     }
     setIsSubmitting(false);
+    isSubmittingRef.current = false;
   };
 
   const handleEdit = (t: any) => {
@@ -248,10 +243,18 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
               </div>
               
               <div>
-                <p className="text-xs font-medium text-white/80 mb-1">Tổng số dư</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-xs font-medium text-white/80">Số dư khả dụng</p>
+                  <button 
+                    onClick={() => setIsBalanceVisible(!isBalanceVisible)}
+                    className="text-white/60 hover:text-white transition-colors p-1"
+                  >
+                    {isBalanceVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-3xl xl:text-4xl font-heading font-bold tracking-tight text-[#FFFFFF]">
-                    {isLoading ? '---' : formatMoney(balanceData.balance)}
+                    {isLoading ? '---' : (isBalanceVisible ? formatMoney(balanceData.balance) : '******')}
                   </span>
                   {!isLoading && <span className="text-xl font-semibold opacity-80 text-[#FFFFFF]">đ</span>}
                 </div>
@@ -311,6 +314,17 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
               >
                 Thu nhập
               </button>
+              <button 
+                type="button"
+                onClick={() => { setTransactionType('saving'); if (!editingId) setSelectedCategory('Bỏ heo/Tiết kiệm tự do'); }}
+                className={`flex-1 py-1.5 text-xs xl:text-sm font-medium rounded-md transition-all ${
+                  transactionType === 'saving' 
+                    ? 'bg-white dark:bg-slate-700 text-indigo-600 shadow-sm' 
+                    : 'text-foreground/60 hover:text-foreground'
+                }`}
+              >
+                Tiết kiệm
+              </button>
             </div>
 
             <form ref={formRef} action={handleActionSubmit} className="space-y-4">
@@ -321,30 +335,28 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
                     type="text" 
                     name="title"
                     placeholder="Vd: Ăn sáng phở bò..." 
-                    onBlur={handleTitleBlur}
-                    className="w-full text-[13px] bg-background border border-[var(--border)] rounded-lg px-3 py-2 pr-10 outline-none focus:border-emerald-teal focus:ring-1 focus:ring-emerald-teal/30 transition-all placeholder:text-foreground/30" 
+                    className="w-full text-[13px] bg-background border border-[var(--border)] rounded-lg px-3 py-2 outline-none focus:border-emerald-teal focus:ring-1 focus:ring-emerald-teal/30 transition-all placeholder:text-foreground/30" 
                   />
-                  {isDetecting && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Loader2 className="w-4 h-4 text-emerald-teal animate-spin" />
-                    </div>
-                  )}
                 </div>
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <label className="text-[11px] xl:text-xs font-semibold text-foreground/70 block">Danh mục</label>
-                  {isDetecting && <span className="text-[10px] text-emerald-teal font-medium animate-pulse">AI đang phân tích...</span>}
                 </div>
                 <select 
                   name="category" 
                   required 
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className={`w-full text-[13px] border rounded-lg px-3 py-2 outline-none transition-all cursor-pointer ${isDetecting ? 'bg-emerald-teal/10 border-emerald-teal/50 text-emerald-teal font-medium' : 'bg-background border-[var(--border)] focus:border-emerald-teal focus:ring-1 focus:ring-emerald-teal/30'}`}
+                  className="w-full text-[13px] border rounded-lg px-3 py-2 outline-none transition-all cursor-pointer bg-background border-[var(--border)] focus:border-emerald-teal focus:ring-1 focus:ring-emerald-teal/30"
                 >
-                  {(transactionType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(cat => (
+                  {(transactionType === 'expense' 
+                    ? EXPENSE_CATEGORIES 
+                    : transactionType === 'income' 
+                      ? INCOME_CATEGORIES 
+                      : SAVING_CATEGORIES
+                  ).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -425,60 +437,87 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
               ))}
             </div>
             
-            <div className="grid grid-cols-7 gap-2 flex-1">
-              {Array.from({ length: daysInMonth }).map((_, i) => {
-                const day = i + 1;
-                const isToday = isMounted && day === TODAY && CURRENT_MONTH === month && CURRENT_YEAR === year;
-                const isPast = isMounted && day < TODAY && CURRENT_MONTH === month && CURRENT_YEAR === year;
-                const isSelected = selectedDate === day;
-                
-                const dailyTransactions = transactionsMap[day] || [];
-                const income = dailyTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-                const expense = dailyTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Math.abs(t.amount), 0);
-                
-                let baseBg = 'bg-background hover:bg-slate-50 dark:hover:bg-slate-800/50';
-                let borderClass = 'border-[var(--border)] border-dashed sm:border-solid hover:border-[var(--border)]';
-                
-                if (isToday) {
-                  baseBg = 'bg-emerald-teal/5 dark:bg-emerald-teal/10';
-                  borderClass = 'border-emerald-teal/30';
-                } else if (isPast) {
-                  baseBg = 'bg-slate-50 dark:bg-slate-900/40 text-foreground/60';
-                }
+            <div className="grid grid-cols-7 gap-1 sm:gap-2 flex-1">
+              {(() => {
+                const monthStart = startOfMonth(currentDate);
+                const monthEnd = endOfMonth(currentDate);
+                const startDate = startOfWeek(monthStart, { weekStartsOn: 1 }); // Monday
+                const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
 
-                if (isSelected) {
-                  baseBg = 'bg-deep-violet/5 dark:bg-deep-violet/10 shadow-sm';
-                  borderClass = 'border-deep-violet/50 ring-1 ring-deep-violet/20';
-                }
-                
-                return (
-                  <div 
-                    key={i} 
-                    onClick={() => setSelectedDate(day)}
-                    className={`group relative aspect-square sm:aspect-auto sm:min-h-[75px] xl:min-h-[85px] p-1.5 xl:p-2 flex flex-col justify-between border rounded-xl overflow-hidden cursor-pointer transition-all duration-200 ${baseBg} ${borderClass}`}
-                  >
-                    <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none p-[1.5px] bg-gradient-to-br from-emerald-teal to-deep-violet -z-10">
-                      <div className="w-full h-full bg-card rounded-[10px]"></div>
-                    </div>
-                    
-                    <span className={`text-[11px] sm:text-xs xl:text-sm font-medium z-10 ${
-                      isSelected ? 'text-deep-violet font-bold' : 
-                      isToday ? 'text-emerald-teal font-bold' : ''
-                    }`}>
-                      {day}
-                    </span>
-                    
-                    <div className="flex flex-col gap-[2px] xl:gap-1 z-10 mt-auto items-start">
-                      {income > 0 && (
-                         <span className="text-[9px] xl:text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 leading-tight">+{formatCompact(income)}</span>
+                const days = eachDayOfInterval({ start: startDate, end: endDate });
+
+                return days.map((date, i) => {
+                  const day = date.getDate();
+                  const isCurrentMonth = isSameMonth(date, monthStart);
+                  const isCurrentToday = isMounted && isToday(date);
+                  const isPastDate = isMounted && isBefore(startOfDay(date), startOfDay(new Date()));
+                  const isSelected = isCurrentMonth && selectedDate === day;
+                  
+                  const dailyTransactions = isCurrentMonth ? (transactionsMap[day] || []) : [];
+                  const income = dailyTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+                  const expense = dailyTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Math.abs(t.amount), 0);
+                  const saving = dailyTransactions.filter(t => t.type === 'saving').reduce((acc, t) => acc + Math.abs(t.amount), 0);
+                  
+                  let baseBg = 'bg-background hover:bg-slate-50 dark:hover:bg-slate-800/50';
+                  let borderClass = 'border-[var(--border)] border-dashed sm:border-solid hover:border-[var(--border)]';
+                  
+                  if (!isCurrentMonth) {
+                    baseBg = 'bg-transparent opacity-40';
+                    borderClass = 'border-transparent cursor-default';
+                  } else {
+                    if (isCurrentToday) {
+                      baseBg = 'bg-emerald-teal/5 dark:bg-emerald-teal/10';
+                      borderClass = 'border-emerald-teal/30';
+                    } else if (isPastDate) {
+                      baseBg = 'bg-slate-50 dark:bg-slate-900/40 text-foreground/60';
+                    }
+
+                    if (isSelected) {
+                      baseBg = 'bg-deep-violet/5 dark:bg-deep-violet/10 shadow-sm';
+                      borderClass = 'border-deep-violet/50 ring-1 ring-deep-violet/20';
+                    }
+                  }
+                  
+                  return (
+                    <div 
+                      key={i} 
+                      onClick={() => {
+                        if (isCurrentMonth) setSelectedDate(day);
+                        else {
+                          setCurrentDate(date);
+                          setSelectedDate(day);
+                        }
+                      }}
+                      className={`group relative aspect-square sm:aspect-auto sm:min-h-[75px] xl:min-h-[85px] p-1.5 xl:p-2 flex flex-col justify-between border rounded-xl overflow-hidden ${isCurrentMonth ? 'cursor-pointer' : ''} transition-all duration-200 ${baseBg} ${borderClass}`}
+                    >
+                      {isCurrentMonth && (
+                        <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none p-[1.5px] bg-gradient-to-br from-emerald-teal to-deep-violet -z-10">
+                          <div className="w-full h-full bg-card rounded-[10px]"></div>
+                        </div>
                       )}
-                      {expense > 0 && (
-                         <span className="text-[9px] xl:text-[11px] font-semibold text-rose-600 dark:text-rose-400 leading-tight">-{formatCompact(expense)}</span>
-                      )}
+                      
+                      <span className={`text-[11px] sm:text-xs xl:text-sm font-medium z-10 ${
+                        isSelected ? 'text-deep-violet font-bold' : 
+                        isCurrentToday ? 'text-emerald-teal font-bold' : ''
+                      }`}>
+                        {day}
+                      </span>
+                      
+                      <div className="flex flex-col gap-[2px] xl:gap-1 z-10 mt-auto items-start overflow-hidden w-full">
+                        {income > 0 && (
+                           <span className="text-[9px] xl:text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 leading-tight truncate w-full">+{formatCompact(income)}</span>
+                        )}
+                        {expense > 0 && (
+                           <span className="text-[9px] xl:text-[11px] font-semibold text-rose-600 dark:text-rose-400 leading-tight truncate w-full">-{formatCompact(expense)}</span>
+                        )}
+                        {saving > 0 && (
+                           <span className="text-[9px] xl:text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 leading-tight truncate w-full">★{formatCompact(saving)}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           </div>
         </motion.div>
@@ -513,6 +552,7 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
               selectedTransactions.map((transaction) => {
                 const Icon = transaction.icon || Activity;
                 const isIncome = transaction.type === 'income';
+                const isSaving = transaction.type === 'saving';
                 return (
                   <div 
                     key={transaction.id}
@@ -545,8 +585,8 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
                         <p className="text-[10px] xl:text-[11px] font-medium text-foreground/50 truncate tracking-wide mt-0.5">{transaction.category}</p>
                       </div>
                     </div>
-                    <div className={`mt-2 text-right text-xs xl:text-sm font-bold font-mono ${isIncome ? 'text-emerald-500' : 'text-rose-600'}`}>
-                      {isIncome ? '+' : ''}{formatMoney(Math.abs(transaction.amount))} đ
+                    <div className={`mt-2 text-right text-xs xl:text-sm font-bold font-mono ${isIncome ? 'text-emerald-500' : isSaving ? 'text-indigo-600' : 'text-rose-600'}`}>
+                      {isIncome ? '+' : isSaving ? '' : '-'}{formatMoney(Math.abs(transaction.amount))} đ
                     </div>
                   </div>
                 );

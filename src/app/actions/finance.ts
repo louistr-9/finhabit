@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 
 export async function addTransaction(formData: FormData) {
   const supabase = await createClient();
-  
+
   // 1. Kiểm tra Security - Đảm bảo User đã đăng nhập
   const user = await getCachedUser();
   if (!user) {
@@ -15,7 +15,7 @@ export async function addTransaction(formData: FormData) {
   // 2. Parse & Code Validation an toàn
   const amount = Number(formData.get('amount'));
   const category = formData.get('category') as string;
-  const type = formData.get('type') as 'income' | 'expense';
+  const type = formData.get('type') as 'income' | 'expense' | 'saving';
   const date = (formData.get('date') as string) || new Date().toISOString();
 
   if (isNaN(amount) || amount <= 0) {
@@ -41,6 +41,6 @@ export async function addTransaction(formData: FormData) {
 
   // 4. Tự động cập nhật giao diện (Clear cache)
   revalidatePath('/finance');
-  
+
   return { success: true };
 }

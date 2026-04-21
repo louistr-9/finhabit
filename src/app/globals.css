@@ -1,5 +1,5 @@
 @import "tailwindcss";
-
+@custom-variant dark (&:where(.dark, .dark *));
 @theme inline {
   /* Colors */
   --color-background: var(--background);
@@ -40,15 +40,24 @@
   --radius: 1rem;
 }
 
-/* Dark mode configuration for the future */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: hsl(222, 47%, 11%);
-    --foreground: hsl(210, 40%, 98%);
-    --card: hsl(222, 47%, 15%);
-    --card-foreground: hsl(210, 40%, 98%);
-    --border: hsl(217, 32%, 22%);
-  }
+.dark {
+  --background: hsl(222, 47%, 11%);
+  --foreground: hsl(210, 40%, 98%);
+  --card: hsl(222, 47%, 15%);
+  --card-foreground: hsl(210, 40%, 98%);
+  --border: hsl(217, 32%, 22%);
+  --slate-50: hsl(222, 47%, 15%);
+}
+
+.warm {
+  --background: hsl(40, 33%, 96%); /* Ấm áp, hơi vàng nhạt */
+  --foreground: hsl(30, 20%, 20%);
+  --card: hsl(40, 50%, 98%);
+  --card-foreground: hsl(30, 20%, 20%);
+  --border: hsl(40, 20%, 85%);
+  --slate-50: hsl(40, 40%, 94%);
+  --emerald-teal: hsl(150, 60%, 30%); /* Điều chỉnh brand cho hợp tông ấm */
+  --deep-violet: hsl(350, 50%, 45%); 
 }
 
 body {

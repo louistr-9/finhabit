@@ -3,6 +3,8 @@ import { getCachedUser } from '@/utils/supabase/server';
 import { Sidebar } from '@/components/Sidebar';
 import { BottomNav } from '@/components/BottomNav';
 
+import { AIChatbot } from '@/components/AIChatbot';
+
 export default async function DashboardLayout({
   children,
 }: Readonly<{
@@ -27,6 +29,7 @@ export default async function DashboardLayout({
         </div>
       </main>
       <BottomNav />
+      <AIChatbot />
     </>
   );
 }
