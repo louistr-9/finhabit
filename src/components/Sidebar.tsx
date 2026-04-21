@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Wallet, CheckSquare, BarChart3,
-  LogOut, Bell, CreditCard, ChevronUp, ChevronDown, User, Palette
+  LogOut, Bell, CreditCard, ChevronUp, ChevronDown, User, Palette, Menu, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -97,8 +97,10 @@ function ThemeDropdown({ theme, setTheme }: { theme: string; setTheme: (val: str
   );
 }
 
-export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
-  const pathname = usePathname();
+// Sidebar content — dùng chung cho cả Desktop và Mobile Drawer
+function SidebarContent({
+  displayName, avatarUrl, email, pathname, onNavClick
+}: SidebarProps & { pathname: string; onNavClick?: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -120,7 +122,6 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
     .join('')
     .toUpperCase();
 
-  // Close when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -132,7 +133,7 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
   }, []);
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-[var(--border)] bg-[var(--background)] px-4 py-8 hidden lg:flex flex-col">
+    <>
       {/* Brand */}
       <div className="mb-10 flex items-center px-4 shrink-0">
         <div className="h-8 w-8 rounded-lg bg-emerald-teal flex items-center justify-center mr-3">
@@ -142,7 +143,7 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="space-y-2 flex-1">
+      <nav className="space-y-2 flex-1 overflow-y-auto py-2 pr-2 scrollbar-hide">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
@@ -151,6 +152,7 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavClick}
               className={cn(
                 'group flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200',
                 isActive
@@ -189,7 +191,7 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
                 {/* Tài khoản */}
                 <Link
                   href="/settings"
-                  onClick={() => setMenuOpen(false)}
+                  onClick={() => { setMenuOpen(false); onNavClick?.(); }}
                   className="group flex w-full items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
                 >
                   <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
@@ -295,6 +297,80 @@ export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
           </button>
         </form>
       </div>
-    </aside>
+    </>
+  );
+}
+
+export function Sidebar({ displayName, avatarUrl, email }: SidebarProps) {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close drawer on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  return (
+    <>
+      {/* Mobile: Hamburger trigger button */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-4 right-4 z-50 lg:hidden h-10 w-10 rounded-xl bg-card border border-[var(--border)] shadow-soft flex items-center justify-center hover:bg-foreground/5 transition-colors"
+        aria-label="Mở menu"
+      >
+        <Menu className="h-5 w-5 text-foreground/70" />
+      </button>
+
+      {/* Mobile: Drawer overlay */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileOpen(false)}
+              className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm lg:hidden"
+            />
+
+            {/* Drawer */}
+            <motion.aside
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed left-0 top-0 z-[80] h-screen w-72 border-r border-[var(--border)] bg-[var(--background)] px-4 py-8 flex flex-col lg:hidden shadow-2xl rounded-r-2xl"
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setMobileOpen(false)}
+                className="absolute top-4 right-4 h-8 w-8 rounded-lg hover:bg-foreground/5 flex items-center justify-center transition-colors"
+              >
+                <X className="h-4 w-4 text-foreground/50" />
+              </button>
+
+              <SidebarContent
+                displayName={displayName}
+                avatarUrl={avatarUrl}
+                email={email}
+                pathname={pathname}
+                onNavClick={() => setMobileOpen(false)}
+              />
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Desktop: Fixed sidebar (unchanged) */}
+      <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-[var(--border)] bg-[var(--background)] px-4 py-8 hidden lg:flex flex-col">
+        <SidebarContent
+          displayName={displayName}
+          avatarUrl={avatarUrl}
+          email={email}
+          pathname={pathname}
+        />
+      </aside>
+    </>
   );
 }

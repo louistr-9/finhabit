@@ -21,7 +21,7 @@ export async function parseNaturalLanguage(input: string): Promise<AIParseResult
   const user = await getCachedUser();
   if (!user) throw new Error("Unauthorized");
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
   const today = getVNDate();
 
   const prompt = `Bạn là "Robot FinHabit" – trợ lý AI thân thiện, vui tính trong ứng dụng quản lý tài chính & thói quen FinHabit.
