@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/utils/supabase/server';
+import { createClient, getCachedUser } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { GoogleGenAI } from '@google/genai';
 
@@ -12,7 +12,7 @@ function getVNTime(date: Date = new Date()) {
 // Fetch all habits and their log status for a specific date (default today)
 export async function getDailyHabits(dateStr?: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return [];
 
   let today = dateStr || getVNTime();
@@ -68,7 +68,7 @@ export async function getDailyHabits(dateStr?: string) {
 
 export async function toggleHabit(habitId: string, isDone: boolean, dateStr?: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) throw new Error('Unauthorized');
 
   const targetDate = dateStr || getVNTime();
@@ -101,14 +101,14 @@ export async function toggleHabit(habitId: string, isDone: boolean, dateStr?: st
   revalidatePath('/');
 }
 
-export async function updateHabitValue(habitId: string, value: number, goal: number, dateStr?: string) {
+export async function updateHabitValue(habitId: string, value: number, goal: number, dateStr?: string, forceSkip: boolean = false) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) throw new Error('Unauthorized');
 
   const targetDate = dateStr || getVNTime();
 
-  const isDone = value >= (goal || 1);
+  const isDone = forceSkip ? true : value >= (goal || 1);
 
   const { error } = await supabase
     .from('habit_logs')
@@ -146,7 +146,7 @@ export async function addHabit(
   groupName?: string
 ) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) throw new Error('Unauthorized');
 
   const { error } = await supabase
@@ -239,7 +239,7 @@ export async function getDashboardHabitStats(dateStr?: string) {
 
 export async function deleteHabit(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) throw new Error('Unauthorized');
 
   const { error } = await supabase
@@ -273,7 +273,7 @@ export async function updateHabit(
   }
 ) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) throw new Error('Unauthorized');
 
   const { error } = await supabase
@@ -293,7 +293,7 @@ export async function updateHabit(
 
 export async function getHabitMonthlyHistory(habitId: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return [];
 
   const todayStr = getVNTime();
@@ -320,7 +320,7 @@ export async function getHabitMonthlyHistory(habitId: string) {
 }
 export async function getHabitAchievements() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return { longestStreak: 0, todayCompletionRate: 0, globalHistory: [] };
 
   const todayStr = getVNTime();
@@ -453,7 +453,7 @@ export async function getHabitAchievements() {
 
 export async function getGlobalHistory(month: number, year: number) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return [];
 
   // First and last day of month

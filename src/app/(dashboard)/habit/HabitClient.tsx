@@ -8,7 +8,8 @@ import {
   BookOpen, Dumbbell, Coffee, Heart, Brain, Sparkles, Droplets, 
   Target, Moon, Sun, Apple, Zap, Music, Camera, Circle, Code,
   Check, Flame, Trophy, Plus, Loader2, X, ChevronRight, ChevronLeft, Bell, Link2, Info, Pencil, Trash2, AlertTriangle,
-  Footprints, Bike, Waves, Wallet, PiggyBank, Wind, Eye, Ban, Gamepad2, Frown, ArrowUp, Tv, Smartphone, Activity, MinusCircle
+  Footprints, Bike, Waves, Wallet, PiggyBank, Wind, Eye, Ban, Gamepad2, Frown, ArrowUp, Tv, Smartphone, Activity, MinusCircle,
+  Settings, RotateCcw, FastForward
 } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { toggleHabit, addHabit, updateHabit, deleteHabit, aiSuggestHabit, updateHabitValue, getHabitMonthlyHistory, getHabitAchievements, getGlobalHistory } from './actions';
@@ -182,9 +183,34 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
   const router = useRouter();
   const [habits, setHabits] = useState<Habit[]>(initialHabits);
   const [isPending, startTransition] = useTransition();
+  const [pendingDragUpdate, setPendingDragUpdate] = useState<{ habitId: string, val: number, goal: number, dateStr?: string } | null>(null);
+
+  useEffect(() => {
+    setHabits(initialHabits);
+  }, [initialHabits]);
+
+  useEffect(() => {
+    if (pendingDragUpdate) {
+      startTransition(async () => {
+        try {
+          await updateHabitValue(
+            pendingDragUpdate.habitId, 
+            pendingDragUpdate.val, 
+            pendingDragUpdate.goal, 
+            pendingDragUpdate.dateStr
+          );
+          router.refresh();
+        } catch (err) {
+          alert('Không thể lưu dữ liệu vuốt: ' + err);
+        }
+      });
+      setPendingDragUpdate(null);
+    }
+  }, [pendingDragUpdate, router]);
 
   // Modal & Edit State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showManageModal, setShowManageModal] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
   const [showSuggestionGallery, setShowSuggestionGallery] = useState(false);
   const [activeTab, setActiveTab] = useState('Phổ biến');
@@ -416,6 +442,7 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
         }
         setShowAddModal(false);
         setEditingHabit(null);
+        router.refresh();
       } catch (err) {
         alert("Không thể " + (editingHabit ? "cập nhật" : "thêm") + " thói quen. Vui lòng thử lại.");
       }
@@ -429,6 +456,7 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
             await deleteHabit(deletingId);
             setShowDeleteModal(false);
             setDeletingId(null);
+            router.refresh();
         } catch (err) {
             alert("Không thể xóa thói quen.");
         }
@@ -444,6 +472,7 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
             await updateHabitValue(activeHabitToLog.id, val, activeHabitToLog.goal_value, selectedDateToLog);
             setShowLogModal(false);
             setLogValue("");
+            router.refresh();
         } catch (err) {
             alert("Không thể ghi nhận số liệu.");
         }
@@ -481,14 +510,24 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
           <h2 className="text-2xl sm:text-3xl font-heading font-bold text-foreground">Thói quen</h2>
           <p className="text-foreground/60 mt-0.5 text-sm sm:text-base">Xây dựng cuộc sống kỷ luật mỗi ngày.</p>
         </div>
-        <button 
-          onClick={handleOpenAddModal}
-          disabled={isPending}
-          className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-500 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-emerald-500/20 shadow-lg hover:translate-y-[-2px] active:translate-y-0 transition-all font-heading w-full sm:w-auto"
-        >
-          {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" strokeWidth={2.5} />}
-          Thêm thói quen
-        </button>
+        <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowManageModal(true)}
+              disabled={isPending}
+              className="flex items-center justify-center p-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-foreground transition-all shadow-sm"
+              title="Quản lý thói quen"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={handleOpenAddModal}
+              disabled={isPending}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-500 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-emerald-500/20 shadow-lg hover:translate-y-[-2px] active:translate-y-0 transition-all font-heading"
+            >
+              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" strokeWidth={2.5} />}
+              Thêm thói quen
+            </button>
+        </div>
       </div>
 
       {/* Group Navigation Tabs */}
@@ -571,18 +610,16 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
                     <button 
                       key={idx}
                       onClick={() => openSuggestModal(sugg)}
-                      className="w-full flex items-center justify-between p-4 bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800 border border-[var(--border)] rounded-2xl transition-all shadow-sm group"
+                      className="w-full flex items-center p-3 sm:p-4 rounded-2xl border border-[var(--border)] hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-left group hover:border-indigo-200 dark:hover:border-indigo-800"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-900 flex items-center justify-center ${sugg.color}`}>
-                          <SuggIcon className="w-5 h-5" strokeWidth={2} />
-                        </div>
-                        <span className="font-semibold text-foreground">{sugg.name}</span>
+                      <div className={`w-12 h-12 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-900 group-hover:scale-110 transition-transform ${sugg.color}`}>
+                        <SuggIcon className="w-6 h-6" />
                       </div>
-                      <div className="flex items-center text-emerald-teal opacity-50 group-hover:opacity-100 transition-opacity">
-                        <Heart className="w-4 h-4 mr-1 fill-emerald-teal" />
-                        <Plus className="w-5 h-5" strokeWidth={2.5} />
+                      <div className="ml-4 flex-1">
+                        <p className="font-bold text-foreground group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{sugg.name}</p>
+                        <p className="text-xs text-foreground/50 mt-1">Mục tiêu: {sugg.goal} {sugg.unit}/ngày</p>
                       </div>
+                      <Plus className="w-5 h-5 text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </button>
                   );
                 })}
@@ -596,6 +633,72 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
                 >
                   Tùy chỉnh
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showManageModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 p-0">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowManageModal(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="relative bg-card w-full sm:max-w-md h-full sm:h-auto sm:max-h-[85vh] sm:rounded-3xl shadow-2xl overflow-hidden border border-[var(--border)] flex flex-col"
+            >
+              <div className="p-4 sm:p-6 border-b border-[var(--border)] flex items-center justify-between sticky top-0 bg-card z-10 shrink-0">
+                <h3 className="text-lg font-heading font-bold text-foreground">Quản lý thói quen</h3>
+                <button onClick={() => setShowManageModal(false)} className="p-2 -mr-2 text-foreground/50 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
+                {habits.length === 0 ? (
+                  <p className="text-center text-foreground/50 text-sm py-10">Chưa có thói quen nào.</p>
+                ) : (
+                  habits.map((habit) => {
+                    const IconComponent = ICON_MAP[habit.icon] || Code;
+                    return (
+                      <div key={habit.id} className="flex items-center justify-between p-3 rounded-2xl border border-[var(--border)] bg-slate-50 dark:bg-slate-900">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-white dark:bg-slate-800 shadow-sm ${habit.color}`}>
+                            <IconComponent className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-sm text-foreground">{habit.name}</p>
+                            <p className="text-[10px] text-foreground/50">{habit.goal_value} {habit.unit}/ngày</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button 
+                            onClick={() => { setShowManageModal(false); openEditModal(habit); }}
+                            className="p-2 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/20 rounded-lg transition-colors"
+                            title="Sửa"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => { setShowManageModal(false); setDeletingId(habit.id); setShowDeleteModal(true); }}
+                            className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/20 rounded-lg transition-colors"
+                            title="Xóa"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </motion.div>
           </div>
@@ -930,9 +1033,7 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
                           // It's a DRAG - Finalize with server
                           const finalX = Math.max(0, Math.min(pe.clientX - rect.left, rect.width));
                           const finalVal = Math.round((finalX / rect.width) * habit.goal_value);
-                          startTransition(() => {
-                             updateHabitValue(habit.id, finalVal, habit.goal_value, dateStr);
-                          });
+                          setPendingDragUpdate({ habitId: habit.id, val: finalVal, goal: habit.goal_value, dateStr });
                         }
                       };
 
@@ -962,21 +1063,36 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
 
                       <div className={`flex flex-col items-end`}>
                         <span className={`text-[13px] font-bold transition-colors ${progressPct > 85 ? 'text-white' : 'text-foreground/60'}`}>
-                            {habit.current_value}/{habit.goal_value} {habit.unit}
+                            {habit.done && habit.current_value === 0 ? "Đã bỏ qua" : `${habit.current_value}/${habit.goal_value} ${habit.unit}`}
                         </span>
                         
                         <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
                             <button 
-                                onClick={(e) => { e.stopPropagation(); openEditModal(habit); }} 
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  setPendingDragUpdate({ habitId: habit.id, val: 0, goal: habit.goal_value, dateStr }); 
+                                }} 
                                 className={`p-1.5 transition-colors ${progressPct > 90 ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-indigo-500'}`}
+                                title="Làm lại"
                             >
-                                <Pencil className="w-3 h-3" />
+                                <RotateCcw className="w-3 h-3" />
                             </button>
                             <button 
-                                onClick={(e) => { e.stopPropagation(); setDeletingId(habit.id); setShowDeleteModal(true); }} 
-                                className={`p-1.5 transition-colors ${progressPct > 90 ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-rose-500'}`}
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  startTransition(async () => {
+                                      try {
+                                        await updateHabitValue(habit.id, 0, habit.goal_value, dateStr, true);
+                                        router.refresh();
+                                      } catch (err) {
+                                        alert('Không thể bỏ qua: ' + err);
+                                      }
+                                  });
+                                }} 
+                                className={`p-1.5 transition-colors ${progressPct > 90 ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-amber-500'}`}
+                                title="Bỏ qua hôm nay (Giữ chuỗi)"
                             >
-                                <Trash2 className="w-3 h-3" />
+                                <FastForward className="w-3 h-3" />
                             </button>
                         </div>
                       </div>

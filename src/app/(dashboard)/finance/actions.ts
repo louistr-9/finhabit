@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/utils/supabase/server';
+import { createClient, getCachedUser } from '@/utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 
 // Helper to get consistent date string for VN (GMT+7)
@@ -38,7 +38,7 @@ export async function getMonthlyTransactions(year: number, month: number) {
 export async function addTransaction(formData: FormData) {
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) throw new Error('Unauthorized');
 
   const titleInput = formData.get('title') as string;
@@ -75,7 +75,7 @@ export async function addTransaction(formData: FormData) {
 export async function deleteTransaction(id: string) {
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) throw new Error('Unauthorized');
 
   const { error } = await supabase
@@ -95,7 +95,7 @@ export async function deleteTransaction(id: string) {
 export async function updateTransaction(id: string, formData: FormData) {
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) throw new Error('Unauthorized');
 
   const titleInput = formData.get('title') as string;
@@ -176,7 +176,7 @@ export async function getBalanceHubData() {
 
 export async function getWeeklyOverview() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCachedUser();
   if (!user) return [];
 
   const todayStr = getVNTime();
