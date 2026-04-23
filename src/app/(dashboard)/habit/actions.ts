@@ -55,16 +55,20 @@ export async function getDailyHabits(dateStr?: string) {
     return {
       id: h.id,
       name: h.name,
+      description: h.description || '',
       group_name: h.group_name || null,
       icon: h.icon || 'BookOpen',
       color: h.color || 'text-indigo-600',
       unit: h.unit || 'lần',
       goal_value: h.goal_value || 1,
       current_value: log?.val || 0,
-      done: log?.done || false
+      done: log?.done || false,
+      reminder_time: h.reminder_time || null,
+      frequency: h.frequency || { type: 'daily' }
     };
   });
 }
+
 
 export async function toggleHabit(habitId: string, isDone: boolean, dateStr?: string) {
   const supabase = await createClient();
@@ -502,4 +506,70 @@ export async function getGlobalHistory(month: number, year: number) {
   }
 
   return history;
+}
+export async function getWeeklyHabitLogs(): Promise<{
+  habitId: string;
+  days: {
+    date: string;       // 'YYYY-MM-DD'
+    level: number;      // 0=none, 1=low, 2=mid, 3=high, 4=done
+    skipped: boolean;   // done=true but current_value=0 means skipped
+  }[];
+}[]> {
+  const supabase = await createClient();
+  const user = await getCachedUser();
+  if (!user) return [];
+
+  // Last 7 days (today included) in VN time
+  const dates: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.push(getVNTime(d));
+  }
+  const startDate = dates[0];
+  const endDate = dates[dates.length - 1];
+
+  // All habits for the user
+  const { data: habits } = await supabase
+    .from('habits')
+    .select('id, goal_value')
+    .eq('user_id', user.id);
+
+  if (!habits || habits.length === 0) return [];
+
+  // All logs in range
+  const { data: logs } = await supabase
+    .from('habit_logs')
+    .select('habit_id, date, current_value, completed')
+    .eq('user_id', user.id)
+    .gte('date', startDate)
+    .lte('date', endDate);
+
+  // Map: habitId -> date -> log
+  const logMap = new Map<string, Map<string, { current_value: number; completed: boolean }>>();
+  (logs || []).forEach(l => {
+    const dateKey = typeof l.date === 'string' ? l.date.slice(0, 10) : getVNTime(new Date(l.date));
+    if (!logMap.has(l.habit_id)) logMap.set(l.habit_id, new Map());
+    logMap.get(l.habit_id)!.set(dateKey, { current_value: l.current_value, completed: l.completed });
+  });
+
+  return habits.map(h => ({
+    habitId: h.id,
+    days: dates.map(date => {
+      const log = logMap.get(h.id)?.get(date);
+      if (!log) return { date, level: 0, skipped: false };
+
+      const skipped = log.completed && log.current_value === 0;
+      if (skipped) return { date, level: 0, skipped: true };
+
+      const ratio = log.current_value / Math.max(h.goal_value, 1);
+      let level = 0;
+      if (ratio >= 1) level = 4;
+      else if (ratio >= 0.6) level = 3;
+      else if (ratio >= 0.3) level = 2;
+      else if (ratio > 0) level = 1;
+
+      return { date, level, skipped: false };
+    })
+  }));
 }

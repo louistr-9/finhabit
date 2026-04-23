@@ -12,7 +12,8 @@ import {
   Settings, RotateCcw, FastForward
 } from 'lucide-react';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { toggleHabit, addHabit, updateHabit, deleteHabit, aiSuggestHabit, updateHabitValue, getHabitMonthlyHistory, getHabitAchievements, getGlobalHistory } from './actions';
+import { toggleHabit, addHabit, updateHabit, deleteHabit, aiSuggestHabit, updateHabitValue, getHabitMonthlyHistory, getHabitAchievements, getGlobalHistory, getWeeklyHabitLogs } from './actions';
+
 
 const ICON_MAP: Record<string, any> = {
   BookOpen, Dumbbell, Coffee, Heart, Brain, Sparkles, Droplets, 
@@ -90,6 +91,7 @@ const HABIT_SUGGESTIONS: Record<string, {name: string, icon: string, color: stri
 interface Habit {
   id: string;
   name: string;
+  description?: string;
   group_name?: string | null;
   icon: string;
   color: string;
@@ -97,6 +99,8 @@ interface Habit {
   goal_value: number;
   current_value: number;
   done: boolean;
+  reminder_time?: string | null;
+  frequency?: { type: string };
 }
 
 // Removed MonthlyHeatmap as requested to match the new card design
@@ -184,10 +188,19 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
   const [habits, setHabits] = useState<Habit[]>(initialHabits);
   const [isPending, startTransition] = useTransition();
   const [pendingDragUpdate, setPendingDragUpdate] = useState<{ habitId: string, val: number, goal: number, dateStr?: string } | null>(null);
+  const [selectedDate, setSelectedDate] = useState(dateStr);
 
   useEffect(() => {
     setHabits(initialHabits);
   }, [initialHabits]);
+
+  // When user picks a different date, navigate to that date via URL param
+  useEffect(() => {
+    if (selectedDate && selectedDate !== dateStr) {
+      router.push(`/habit?date=${selectedDate}`);
+    }
+  }, [selectedDate]);
+
 
   useEffect(() => {
     if (pendingDragUpdate) {
@@ -222,11 +235,15 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
   const [logValue, setLogValue] = useState("");
   const [isEditingGroup, setIsEditingGroup] = useState(false);
   const [activeGroupFilter, setActiveGroupFilter] = useState("Tất cả");
+
   const [achievements, setAchievements] = useState<{
     longestStreak: number;
     currentStreak: number;
     todayCompletionRate: number;
   }>({ longestStreak: 0, currentStreak: 0, todayCompletionRate: 0 });
+
+  type WeeklyLog = { habitId: string; days: { date: string; level: number; skipped: boolean }[] };
+  const [weeklyLogs, setWeeklyLogs] = useState<WeeklyLog[]>([]);
 
   const fetchAchievements = async () => {
     const data = await getHabitAchievements();
@@ -235,6 +252,11 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
         currentStreak: data.currentStreak || 0,
         todayCompletionRate: data.todayCompletionRate
     });
+  };
+
+  const fetchWeeklyLogs = async () => {
+    const data = await getWeeklyHabitLogs();
+    setWeeklyLogs(data);
   };
 
   const [viewMonth, setViewMonth] = useState(new Date().getMonth() + 1);
@@ -248,8 +270,10 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
 
   useEffect(() => {
     fetchAchievements();
+    fetchWeeklyLogs();
     fetchHistory(viewMonth, viewYear);
   }, [habits, viewMonth, viewYear]);
+
 
   // Midnight Monitor: Auto-reset highlights when crossing 00:00
   useEffect(() => {
@@ -337,14 +361,14 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
 
   const AVAILABLE_ICONS = ["BookOpen", "Dumbbell", "Coffee", "Heart", "Brain", "Sparkles", "Droplets", "Target", "Moon", "Sun", "Apple", "Zap", "Music", "Camera", "Flame", "Footprints", "Bike", "Waves", "Wallet", "PiggyBank", "Wind", "Eye", "Ban", "Gamepad2", "Frown", "ArrowUp", "Tv", "Smartphone", "Activity", "MinusCircle"];
   const AVAILABLE_COLORS = [
-    { name: "Emerald", class: "text-emerald-500", bg: "bg-emerald-50", solid: "bg-emerald-500", shadow: "shadow-emerald-500/30" },
-    { name: "Indigo", class: "text-indigo-500", bg: "bg-indigo-50", solid: "bg-indigo-500", shadow: "shadow-indigo-500/30" },
-    { name: "Rose", class: "text-rose-500", bg: "bg-rose-50", solid: "bg-rose-500", shadow: "shadow-rose-500/30" },
-    { name: "Amber", class: "text-amber-500", bg: "bg-amber-50", solid: "bg-amber-500", shadow: "shadow-amber-500/30" },
-    { name: "Cyan", class: "text-cyan-500", bg: "bg-cyan-50", solid: "bg-cyan-500", shadow: "shadow-cyan-500/30" },
-    { name: "Violet", class: "text-violet-500", bg: "bg-violet-50", solid: "bg-violet-500", shadow: "shadow-violet-500/30" },
-    { name: "Orange", class: "text-orange-500", bg: "bg-orange-50", solid: "bg-orange-500", shadow: "shadow-orange-500/30" },
-    { name: "Slate", class: "text-slate-500", bg: "bg-slate-50", solid: "bg-slate-500", shadow: "shadow-slate-500/30" }
+    { name: "Emerald", class: "text-emerald-500", bg: "bg-emerald-50", solid: "bg-emerald-500", shadow: "shadow-emerald-500/30", hex: "#10b981" },
+    { name: "Indigo", class: "text-indigo-500", bg: "bg-indigo-50", solid: "bg-indigo-500", shadow: "shadow-indigo-500/30", hex: "#6366f1" },
+    { name: "Rose", class: "text-rose-500", bg: "bg-rose-50", solid: "bg-rose-500", shadow: "shadow-rose-500/30", hex: "#f43f5e" },
+    { name: "Amber", class: "text-amber-500", bg: "bg-amber-50", solid: "bg-amber-500", shadow: "shadow-amber-500/30", hex: "#f59e0b" },
+    { name: "Cyan", class: "text-cyan-500", bg: "bg-cyan-50", solid: "bg-cyan-500", shadow: "shadow-cyan-500/30", hex: "#06b6d4" },
+    { name: "Violet", class: "text-violet-500", bg: "bg-violet-50", solid: "bg-violet-500", shadow: "shadow-violet-500/30", hex: "#8b5cf6" },
+    { name: "Orange", class: "text-orange-500", bg: "bg-orange-50", solid: "bg-orange-500", shadow: "shadow-orange-500/30", hex: "#f97316" },
+    { name: "Slate", class: "text-slate-500", bg: "bg-slate-50", solid: "bg-slate-500", shadow: "shadow-slate-500/30", hex: "#64748b" }
   ];
 
   const FINANCE_CATEGORIES = ['Thiết yếu', 'Ăn uống', 'Mua sắm', 'Di chuyển', 'Giải trí', 'Sức khỏe', 'Chi tiêu khác'];
@@ -505,58 +529,88 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
 
   return (
     <div className="w-full pb-10">
-      <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-heading font-bold text-foreground">Thói quen</h2>
-          <p className="text-foreground/60 mt-0.5 text-sm sm:text-base">Xây dựng cuộc sống kỷ luật mỗi ngày.</p>
-        </div>
+      {/* ── HEADER ── */}
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h2 className="text-2xl sm:text-3xl font-heading font-bold text-foreground">Thói quen</h2>
         <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setShowManageModal(true)}
-              disabled={isPending}
-              className="flex items-center justify-center p-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-foreground transition-all shadow-sm"
-              title="Quản lý thói quen"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-            <button 
-              onClick={handleOpenAddModal}
-              disabled={isPending}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-500 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-emerald-500/20 shadow-lg hover:translate-y-[-2px] active:translate-y-0 transition-all font-heading"
-            >
-              {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" strokeWidth={2.5} />}
-              Thêm thói quen
-            </button>
+{/* Overall progress pill */}
+          {habits.length > 0 && (
+            <div className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40">
+              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                {habits.filter(h => h.done).length}/{habits.length} hoàn thành
+              </span>
+            </div>
+          )}
+          <button
+            onClick={() => setShowManageModal(true)}
+            disabled={isPending}
+            className="p-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-foreground transition-all"
+            title="Quản lý thói quen"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+          <button
+            onClick={handleOpenAddModal}
+            disabled={isPending}
+            className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-500 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/20 hover:-translate-y-0.5 active:translate-y-0 transition-all"
+          >
+            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" strokeWidth={2.5} />}
+            Thêm thói quen
+          </button>
         </div>
       </div>
 
-      {/* Group Navigation Tabs */}
-      <div className="mb-8 flex overflow-x-auto hide-scrollbar gap-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-        {["Tất cả", ...existingGroups].map((groupName) => {
-          const isActive = activeGroupFilter === groupName;
-          const count = groupName === "Tất cả" 
-            ? habits.length 
-            : habits.filter(h => h.group_name === groupName).length;
+      {/* ── ALIGNED HEADER ROW: TABS & DATE PICKER ── */}
+      <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left side: Group Tabs */}
+        <div className="lg:col-span-2 flex items-center gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+          {["Tất cả", ...existingGroups].map((groupName) => {
+            const isActive = activeGroupFilter === groupName;
+            const count = groupName === "Tất cả"
+              ? habits.length
+              : habits.filter(h => h.group_name === groupName).length;
+            return (
+              <button
+                key={groupName}
+                onClick={() => setActiveGroupFilter(groupName)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all whitespace-nowrap ${
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                    : 'bg-white dark:bg-white/5 text-foreground/50 border border-[var(--border)] hover:border-indigo-200 dark:hover:border-indigo-700'
+                }`}
+              >
+                {groupName}
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                  isActive ? 'bg-white/20' : 'bg-slate-100 dark:bg-white/10 text-foreground/40'
+                }`}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
 
-          return (
-            <button
-              key={groupName}
-              onClick={() => setActiveGroupFilter(groupName)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-bold transition-all whitespace-nowrap border ${
-                isActive 
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-500/20' 
-                  : 'bg-white dark:bg-slate-900 text-foreground/50 border-[var(--border)] hover:bg-slate-50 dark:hover:bg-white/5'
-              }`}
-            >
-              {groupName}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                isActive ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-white/10 text-foreground/40'
-              }`}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
+        {/* Right side: Date Picker */}
+        <div className="lg:col-span-1 hidden lg:flex lg:justify-end lg:items-center">
+          <label
+            className="flex items-center gap-2 px-4 py-2 rounded-full border border-[var(--border)] bg-card hover:border-indigo-300 dark:hover:border-indigo-700 text-sm font-semibold text-foreground cursor-pointer transition-all relative w-fit"
+            title="Chọn ngày"
+          >
+            <ChevronLeft className="w-4 h-4 text-foreground/40" />
+            <span className="tabular-nums">
+              {new Date(selectedDate + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </span>
+            <ChevronRight className="w-4 h-4 text-foreground/40" />
+            <input
+              type="date"
+              value={selectedDate}
+              max={new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())}
+              onChange={(e) => {
+                if (e.target.value) setSelectedDate(e.target.value);
+              }}
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+            />
+          </label>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -972,178 +1026,328 @@ export default function HabitClient({ initialHabits, dateStr }: { initialHabits:
         })()}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Cột TRÁI: Danh sách Habit */}
+      {/* ── MAIN GRID ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* ── LEFT: Habit Cards ── */}
         <div className="lg:col-span-2">
           {habits.length === 0 ? (
-            <div className="bg-card border border-[var(--border)] rounded-[var(--radius-xl)] p-12 text-center shadow-sm">
-              <EmptyState 
-                title="Sổ tay thói quen trống" 
-                description="Bấm 'Thêm thói quen' ở trên để bắt đầu hành trình kỷ luật của bạn." 
+            <div className="bg-card border border-[var(--border)] rounded-3xl p-12 text-center shadow-soft">
+              <EmptyState
+                title="Sổ tay thói quen trống"
+                description="Bấm 'Thêm thói quen' để bắt đầu hành trình kỷ luật."
                 icon={<Target className="h-10 w-10 text-emerald-teal" strokeWidth={1.5} />}
               />
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-3">
               {habits
-                .filter(habit => activeGroupFilter === "Tất cả" || habit.group_name === activeGroupFilter)
+                .filter(h => activeGroupFilter === "Tất cả" || h.group_name === activeGroupFilter)
                 .map((habit) => {
-                const IconComponent = ICON_MAP[habit.icon] || Code;
-                const progressPct = Math.min(100, Math.round((habit.current_value / habit.goal_value) * 100));
-                const theme = AVAILABLE_COLORS.find(c => c.class === habit.color) || AVAILABLE_COLORS[0];
+                  const IconComponent = ICON_MAP[habit.icon] || Target;
+                  const progressPct = Math.min(100, Math.round((habit.current_value / Math.max(habit.goal_value, 1)) * 100));
+                  const theme = AVAILABLE_COLORS.find(c => c.class === habit.color) || AVAILABLE_COLORS[0];
+                  const isDone = habit.done;
+                  const ringColor = isDone ? '#10b981' : (theme.hex || '#6366f1');
 
-                return (
-                  <motion.div
-                    layout
-                    key={habit.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    onPointerDown={(e) => {
-                      const startX = e.clientX;
-                      const startTime = Date.now();
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      let hasMoved = false;
+                  // SVG progress ring (large: 56px)
+                  const R = 22;
+                  const C = 2 * Math.PI * R;
+                  const dash = (progressPct / 100) * C;
 
-                      const updateHandler = (pe: PointerEvent) => {
-                        const dx = Math.abs(pe.clientX - startX);
-                        if (dx > 5) hasMoved = true;
+                  // Frequency label
+                  const freqLabel = habit.frequency?.type === 'daily' ? 'Hàng ngày' :
+                    habit.frequency?.type === 'weekly' ? 'Hàng tuần' : 'Hàng ngày';
 
-                        if (hasMoved) {
-                          const x = Math.max(0, Math.min(pe.clientX - rect.left, rect.width));
-                          const pct = x / rect.width;
-                          const newVal = Math.round(pct * habit.goal_value);
-                          setHabits(prev => prev.map(h => h.id === habit.id ? { ...h, current_value: newVal, done: newVal >= habit.goal_value } : h));
-                        }
-                      };
-                      
-                      const stopHandler = (pe: PointerEvent) => {
-                        window.removeEventListener('pointermove', updateHandler);
-                        window.removeEventListener('pointerup', stopHandler);
-                        
-                        const duration = Date.now() - startTime;
-                        const dx = Math.abs(pe.clientX - startX);
+                  // Time label from reminder_time
+                  const timeLabel = habit.reminder_time
+                    ? habit.reminder_time
+                    : null;
 
-                        if (!hasMoved && dx < 10 && duration < 350) {
-                          // It's a CLICK
-                          setActiveHabitToLog(habit);
-                          setLogValue("");
-                          setShowLogModal(true);
-                        } else if (hasMoved) {
-                          // It's a DRAG - Finalize with server
-                          const finalX = Math.max(0, Math.min(pe.clientX - rect.left, rect.width));
-                          const finalVal = Math.round((finalX / rect.width) * habit.goal_value);
-                          setPendingDragUpdate({ habitId: habit.id, val: finalVal, goal: habit.goal_value, dateStr });
-                        }
-                      };
-
-                      window.addEventListener('pointermove', updateHandler);
-                      window.addEventListener('pointerup', stopHandler);
-                    }}
-                    className="group relative h-20 bg-slate-50 dark:bg-slate-900 rounded-[1.25rem] overflow-hidden shadow-sm hover:shadow-md transition-all border border-slate-100 dark:border-white/5 cursor-ew-resize touch-none"
-                  >
-                    {/* Progress Fill Background */}
-                    <motion.div 
-                        initial={false}
-                        animate={{ width: `${progressPct}%` }}
-                        className={`absolute inset-0 z-0 ${theme.solid} opacity-100 shadow-inner pointer-events-none`}
-                        style={{ borderRight: progressPct > 0 ? '2px solid rgba(0,0,0,0.1)' : 'none' }}
-                    />
-
-                    {/* Content Layer */}
-                    <div className="relative z-10 w-full h-full flex items-center justify-between px-5 pointer-events-none select-none">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${progressPct > 5 ? 'bg-white/20 text-white' : 'bg-white dark:bg-slate-800 shadow-sm ' + habit.color}`}>
-                           <IconComponent className="w-5 h-5 transition-colors" />
+                  return (
+                    <motion.div
+                      layout
+                      key={habit.id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`group relative rounded-2xl border transition-all cursor-pointer select-none touch-none ${
+                        isDone
+                          ? 'bg-emerald-50/60 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-800/30'
+                          : 'bg-card border-[var(--border)] hover:border-indigo-100 dark:hover:border-indigo-800/40'
+                      } shadow-soft hover:shadow-soft-hover`}
+                      onClick={() => {
+                        setActiveHabitToLog(habit);
+                        setLogValue('');
+                        setShowLogModal(true);
+                      }}
+                    >
+                      <div className="flex items-center gap-4 p-4 pr-5">
+                        {/* Icon circle */}
+                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm transition-transform group-hover:scale-105 ${isDone ? theme.solid + ' text-white' : theme.bg + ' dark:bg-white/5 ' + habit.color}`}>
+                          <IconComponent className="w-7 h-7" />
                         </div>
-                        <h4 className={`font-bold transition-colors ${progressPct > 18 ? 'text-white' : 'text-foreground'}`}>
-                          {habit.name}
-                        </h4>
-                      </div>
 
-                      <div className={`flex flex-col items-end`}>
-                        <span className={`text-[13px] font-bold transition-colors ${progressPct > 85 ? 'text-white' : 'text-foreground/60'}`}>
-                            {habit.done && habit.current_value === 0 ? "Đã bỏ qua" : `${habit.current_value}/${habit.goal_value} ${habit.unit}`}
-                        </span>
-                        
-                        <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
-                            <button 
-                                onClick={(e) => { 
-                                  e.stopPropagation(); 
-                                  setPendingDragUpdate({ habitId: habit.id, val: 0, goal: habit.goal_value, dateStr }); 
-                                }} 
-                                className={`p-1.5 transition-colors ${progressPct > 90 ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-indigo-500'}`}
-                                title="Làm lại"
-                            >
-                                <RotateCcw className="w-3 h-3" />
-                            </button>
-                            <button 
-                                onClick={(e) => { 
-                                  e.stopPropagation(); 
-                                  startTransition(async () => {
-                                      try {
-                                        await updateHabitValue(habit.id, 0, habit.goal_value, dateStr, true);
-                                        router.refresh();
-                                      } catch (err) {
-                                        alert('Không thể bỏ qua: ' + err);
-                                      }
-                                  });
-                                }} 
-                                className={`p-1.5 transition-colors ${progressPct > 90 ? 'text-white/60 hover:text-white' : 'text-slate-400 hover:text-amber-500'}`}
-                                title="Bỏ qua hôm nay (Giữ chuỗi)"
-                            >
-                                <FastForward className="w-3 h-3" />
-                            </button>
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-bold text-foreground text-[15px] leading-tight">{habit.name}</h4>
+                          {habit.description && (
+                            <p className="text-xs text-foreground/50 mt-0.5 truncate">{habit.description}</p>
+                          )}
+                          {/* Tags */}
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-foreground/50 bg-slate-100 dark:bg-white/5 px-2.5 py-1 rounded-full">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                              {freqLabel}
+                            </span>
+                            {timeLabel && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-foreground/50 bg-slate-100 dark:bg-white/5 px-2.5 py-1 rounded-full">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                {timeLabel}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Progress ring */}
+                        <div className="flex flex-col items-center shrink-0">
+                          <div className="relative w-[58px] h-[58px]">
+                            <svg className="w-full h-full -rotate-90" viewBox="0 0 56 56">
+                              <circle cx="28" cy="28" r={R} fill="none" strokeWidth="4" className="text-slate-100 dark:text-white/10" stroke="currentColor" />
+                              <circle
+                                cx="28" cy="28" r={R} fill="none"
+                                strokeWidth="4" strokeLinecap="round"
+                                strokeDasharray={`${dash} ${C}`}
+                                className="transition-all duration-700"
+                                style={{ stroke: ringColor }}
+                              />
+                            </svg>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              {isDone ? (
+                                <Check className="w-5 h-5 text-emerald-500" strokeWidth={2.5} />
+                              ) : (
+                                <span className="text-[11px] font-bold text-foreground/70">{progressPct}%</span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-semibold text-foreground/40 mt-1 whitespace-nowrap">
+                            {isDone && habit.current_value === 0 ? 'Bỏ qua' : `${habit.current_value}/${habit.goal_value} ${habit.unit}`}
+                          </span>
+                        </div>
+
+                        {/* More menu */}
+                        <div className="shrink-0 flex flex-col gap-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openEditModal(habit); }}
+                            className="p-1.5 rounded-lg text-foreground/30 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                            title="Sửa"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setPendingDragUpdate({ habitId: habit.id, val: 0, goal: habit.goal_value, dateStr }); }}
+                            className="p-1.5 rounded-lg text-foreground/30 hover:text-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                            title="Reset"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startTransition(async () => {
+                                try { await updateHabitValue(habit.id, 0, habit.goal_value, dateStr, true); router.refresh(); }
+                                catch { alert('Không thể bỏ qua'); }
+                              });
+                            }}
+                            className="p-1.5 rounded-lg text-foreground/30 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/10 transition-colors"
+                            title="Bỏ qua hôm nay"
+                          >
+                            <FastForward className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
+                    </motion.div>
+                  );
+                })}
             </div>
           )}
         </div>
 
-        {/* Cột PHẢI: Heatmap & Gamification */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-gradient-to-br from-indigo-500 to-deep-violet rounded-[2.5rem] p-8 text-white shadow-soft relative overflow-hidden">
-             <Trophy className="absolute -right-6 -bottom-6 w-40 h-40 opacity-10" />
-             <h3 className="text-xl font-heading font-semibold mb-8 relative z-10 flex items-center gap-3">
-               <Trophy className="w-6 h-6 text-yellow-300" strokeWidth={1.5} />
-               Thành tích
-             </h3>
-             
-             <div className="space-y-8 relative z-10">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 border border-white/20">
-                    <p className="text-white/60 text-[10px] uppercase tracking-wider mb-2 font-bold">Hoàn thành</p>
-                    <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-bold font-mono">{achievements.todayCompletionRate}</span>
-                        <span className="text-sm opacity-60">%</span>
-                    </div>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 border border-white/20">
-                    <p className="text-white/60 text-[10px] uppercase tracking-wider mb-2 font-bold">Chuỗi streaks</p>
-                    <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-bold font-mono">{achievements.currentStreak}</span>
-                        <span className="text-sm opacity-60">ngày</span>
-                    </div>
-                  </div>
-                </div>
-             </div>
+
+        {/* ── RIGHT: Stats Sidebar ── */}
+        <div className="lg:col-span-1 space-y-5">
+
+          {/* Date Picker on mobile (hidden on lg since it's in the top header row) */}
+          <div className="flex justify-center lg:hidden">
+            <label
+              className="flex items-center gap-2 px-4 py-2 rounded-full border border-[var(--border)] bg-card hover:border-indigo-300 dark:hover:border-indigo-700 text-sm font-semibold text-foreground cursor-pointer transition-all relative w-fit"
+              title="Chọn ngày"
+            >
+              <ChevronLeft className="w-4 h-4 text-foreground/40" />
+              <span className="tabular-nums">
+                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </span>
+              <ChevronRight className="w-4 h-4 text-foreground/40" />
+              <input
+                type="date"
+                value={selectedDate}
+                max={new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())}
+                onChange={(e) => {
+                  if (e.target.value) setSelectedDate(e.target.value);
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
+            </label>
           </div>
 
-          {/* NHỊP ĐỘ HOẠT ĐỘNG CARD */}
-          <div className="bg-card border border-[var(--border)] rounded-[2.5rem] p-8 shadow-soft">
-              <CalendarHeatmap 
-                month={viewMonth}
-                year={viewYear}
-                history={monthlyHistory}
-                onPrev={handlePrevMonth}
-                onNext={handleNextMonth}
-              />
+          {/* Streak + completion card */}
+          <div className="bg-gradient-to-br from-indigo-500 via-violet-500 to-deep-violet rounded-3xl p-6 text-white shadow-lg relative overflow-hidden">
+            <Trophy className="absolute -right-4 -bottom-4 w-32 h-32 opacity-10" />
+            <div className="flex items-center gap-2 mb-5 relative z-10">
+              <Trophy className="w-5 h-5 text-yellow-300" strokeWidth={1.5} />
+              <h3 className="font-heading font-bold text-base">Thành tích hôm nay</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3 relative z-10">
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/15">
+                <p className="text-white/60 text-[9px] uppercase tracking-widest font-bold mb-1">Hoàn thành</p>
+                <div className="flex items-baseline gap-0.5">
+                  <span className="text-3xl font-bold font-heading">{achievements.todayCompletionRate}</span>
+                  <span className="text-sm opacity-60">%</span>
+                </div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/15">
+                <p className="text-white/60 text-[9px] uppercase tracking-widest font-bold mb-1">Chuỗi</p>
+                <div className="flex items-baseline gap-0.5">
+                  <span className="text-3xl font-bold font-heading">{achievements.currentStreak}</span>
+                  <span className="text-sm opacity-60">ngày</span>
+                </div>
+              </div>
+            </div>
+            {/* Mini streak dots */}
+            {achievements.currentStreak > 0 && (
+              <div className="flex gap-1.5 mt-4 relative z-10 flex-wrap">
+                {Array.from({ length: Math.min(achievements.currentStreak, 7) }).map((_, i) => (
+                  <div key={i} className="w-2 h-2 rounded-full bg-yellow-300/80" />
+                ))}
+                {achievements.currentStreak > 7 && (
+                  <span className="text-[10px] text-white/60 font-bold self-center">+{achievements.currentStreak - 7}</span>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Weekly heatmap per habit */}
+          {habits.length > 0 && (
+            <div className="bg-card border border-[var(--border)] rounded-3xl p-5 shadow-soft">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-xs font-bold text-foreground/50 uppercase tracking-wider">7 ngày qua</p>
+                <div className="flex gap-1 items-center text-[10px] text-foreground/30 font-medium">
+                  <span className="w-3 h-3 rounded-sm bg-slate-100 dark:bg-white/5 inline-block" />
+                  <span>Chưa</span>
+                  <span className="w-3 h-3 rounded-sm bg-indigo-200 dark:bg-indigo-900/40 inline-block ml-1" />
+                  <span className="w-3 h-3 rounded-sm bg-indigo-400 inline-block" />
+                  <span className="w-3 h-3 rounded-sm bg-indigo-600 inline-block" />
+                  <span>Nhiều</span>
+                </div>
+              </div>
+
+              {/* Day-of-week header */}
+              {(() => {
+                const dayLabels = ['T2','T3','T4','T5','T6','T7','CN'];
+                // Build last-7-days date list
+                const dates: string[] = [];
+                for (let i = 6; i >= 0; i--) {
+                  const d = new Date();
+                  d.setDate(d.getDate() - i);
+                  dates.push(new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(d));
+                }
+                // Map date -> weekday label
+                const dateLabels = dates.map(d => {
+                  const dow = new Date(d + 'T00:00:00').getDay(); // 0=Sun...6=Sat
+                  return dayLabels[dow === 0 ? 6 : dow - 1];
+                });
+                const todayStr = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+
+                return (
+                  <div className="space-y-3">
+                    {/* Header row */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 shrink-0" /> {/* icon spacer */}
+                      <div className="flex-1 flex justify-between">
+                        {dateLabels.map((label, i) => (
+                          <span key={i} className={`text-[9px] font-bold text-center w-7 ${dates[i] === todayStr ? 'text-indigo-500' : 'text-foreground/25'}`}>
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {habits.map(h => {
+                      const IconComp = ICON_MAP[h.icon] || Target;
+                      const theme = AVAILABLE_COLORS.find(c => c.class === h.color) || AVAILABLE_COLORS[0];
+                      const hLog = weeklyLogs.find(w => w.habitId === h.id);
+
+                      // Color classes per level (based on habit theme)
+                      const levelColors: Record<number, string> = {
+                        0: 'bg-slate-100 dark:bg-white/5',
+                        1: 'bg-indigo-100 dark:bg-indigo-900/30',
+                        2: 'bg-indigo-300 dark:bg-indigo-700/50',
+                        3: 'bg-indigo-500',
+                        4: 'bg-indigo-600',
+                      };
+
+                      return (
+                        <div key={h.id} className="flex items-center gap-2">
+                          {/* Icon */}
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${theme.bg} dark:bg-white/5 ${h.color}`}>
+                            <IconComp className="w-3.5 h-3.5" />
+                          </div>
+                          {/* 7 cells */}
+                          <div className="flex-1 flex justify-between gap-1">
+                            {dates.map((date, i) => {
+                              const day = hLog?.days[i];
+                              const isToday = date === todayStr;
+                              const skipped = day?.skipped ?? false;
+                              const level = day?.level ?? 0;
+
+                              return (
+                                <div
+                                  key={date}
+                                  title={`${date}: ${skipped ? 'Bỏ qua' : level === 0 ? 'Chưa' : level === 4 ? 'Hoàn thành' : `${level}/4`}`}
+                                  className={`relative w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                                    skipped
+                                      ? 'bg-slate-100 dark:bg-white/5'
+                                      : levelColors[level]
+                                  } ${isToday ? 'ring-2 ring-indigo-400 ring-offset-1' : ''}`}
+                                >
+                                  {skipped && (
+                                    <X className="w-3 h-3 text-foreground/30" strokeWidth={2.5} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Heatmap card - monthly, moved below weekly */}
+          <div className="bg-card border border-[var(--border)] rounded-3xl p-6 shadow-soft">
+            <CalendarHeatmap
+              month={viewMonth}
+              year={viewYear}
+              history={monthlyHistory}
+              onPrev={handlePrevMonth}
+              onNext={handleNextMonth}
+            />
+          </div>
+
         </div>
+
       </div>
 
       {/* LOG PROGRESS MODAL */}
