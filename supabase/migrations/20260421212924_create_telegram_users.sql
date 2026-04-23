@@ -11,8 +11,14 @@ CREATE TABLE IF NOT EXISTS public.telegram_users (
 ALTER TABLE public.telegram_users ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Service role can do everything (Edge Function uses service role key)
-CREATE POLICY "Service role full access" ON public.telegram_users
-  FOR ALL USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'telegram_users' AND policyname = 'Service role full access'
+  ) THEN
+    CREATE POLICY "Service role full access" ON public.telegram_users
+      FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
 -- Index for fast lookup by chat_id
-CREATE INDEX idx_telegram_users_chat_id ON public.telegram_users(telegram_chat_id);
+CREATE INDEX IF NOT EXISTS idx_telegram_users_chat_id ON public.telegram_users(telegram_chat_id);

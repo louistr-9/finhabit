@@ -1,5 +1,6 @@
 import { FinanceClient } from './FinanceClient';
 import { getBalanceHubData, getMonthlyTransactions } from './actions';
+import { applyDueRecurringTransactions, getRecurringTransactions } from './recurringActions';
 
 export const metadata = {
   title: 'Tài chính | FinHabit',
@@ -11,10 +12,13 @@ export default async function FinancePage() {
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
 
-  // Fetch initial data on the server
-  const [balanceHubData, monthlyTxs] = await Promise.all([
+  // Auto-apply any due recurring rules first, then fetch data
+  await applyDueRecurringTransactions();
+
+  const [balanceHubData, monthlyTxs, recurringList] = await Promise.all([
     getBalanceHubData(),
-    getMonthlyTransactions(year, month)
+    getMonthlyTransactions(year, month),
+    getRecurringTransactions(),
   ]);
 
   return (
@@ -23,6 +27,7 @@ export default async function FinancePage() {
       initialTransactions={monthlyTxs}
       initialYear={year}
       initialMonth={month}
+      initialRecurring={recurringList}
     />
   );
 }
