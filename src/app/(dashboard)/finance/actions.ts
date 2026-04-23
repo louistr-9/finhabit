@@ -74,6 +74,45 @@ export async function addTransaction(formData: FormData) {
   revalidatePath('/finance');
 }
 
+export async function addTransactionsBatch(transactions: Array<{title: string, amount: number, category: string, type: 'income' | 'expense' | 'saving', date: string}>) {
+  const supabase = await createClient();
+
+  const user = await getCachedUser();
+  if (!user) throw new Error('Unauthorized');
+
+  const insertData = transactions.map(t => {
+    let category = t.category;
+    let title = t.title?.trim();
+
+    if (!title) {
+      if (t.type === 'income') category = 'Quà tặng & Thu nhập khác';
+      else if (t.type === 'saving') category = 'Bỏ heo/Tiết kiệm tự do';
+      else category = 'Chi tiêu khác';
+      title = category;
+    }
+
+    return {
+      user_id: user.id,
+      title,
+      amount: t.amount,
+      category,
+      type: t.type,
+      date: t.date
+    };
+  });
+
+  if (insertData.length === 0) return;
+
+  const { error } = await supabase.from('transactions').insert(insertData);
+
+  if (error) {
+    console.error('Error adding transactions batch:', error.message);
+    throw new Error('Không thể thêm giao dịch hàng loạt: ' + error.message);
+  }
+
+  revalidatePath('/finance');
+}
+
 export async function deleteTransaction(id: string) {
   const supabase = await createClient();
 
@@ -89,6 +128,24 @@ export async function deleteTransaction(id: string) {
   if (error) {
     console.error('Error deleting transaction:', error.message);
     throw new Error('Không thể xóa giao dịch');
+  }
+
+  revalidatePath('/finance');
+}
+
+export async function deleteAllTransactions() {
+  const supabase = await createClient();
+  const user = await getCachedUser();
+  if (!user) throw new Error('Unauthorized');
+
+  const { error } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('user_id', user.id);
+
+  if (error) {
+    console.error('Error deleting all transactions:', error.message);
+    throw new Error('Không thể xóa tất cả giao dịch: ' + error.message);
   }
 
   revalidatePath('/finance');

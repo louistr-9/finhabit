@@ -8,7 +8,7 @@ import {
   CheckSquare, Calendar, MessageCircle, RotateCcw,
   BookOpen, Dumbbell, Coffee, Heart, Brain, Droplets, Target, Moon, Sun, Apple, Zap, Music, Camera
 } from 'lucide-react';
-import { parseNaturalLanguage, executeAIAction, AIParseResult } from '@/app/actions/unified-ai';
+import { parseNaturalLanguage, executeAIAction, AIParseResult, TransactionItem, HabitProgressItem, ChatTurn } from '@/app/actions/unified-ai';
 import { cn } from '@/lib/utils';
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -26,11 +26,17 @@ interface ChatMessage {
 }
 
 const QUICK_HINTS = [
-  '☕ Cà phê sáng 25k',
-  '💰 Nhận lương 15tr',
-  '📖 Đọc sách 20 trang',
+  '☕ Sáng cà phê 25k, trưa cơm 45k',
+  '💪 Đầu gối được 8km',
+  '💸 Táng này tôi chi nhiều chưa?',
   '💡 Mẹo tiết kiệm',
 ];
+
+const TYPE_COLOR = {
+  income: { badge: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20', amount: 'text-emerald-500', prefix: '+' },
+  saving: { badge: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20', amount: 'text-indigo-500', prefix: '-' },
+  expense: { badge: 'text-rose-600 bg-rose-50 dark:bg-rose-900/20', amount: 'text-rose-500', prefix: '-' },
+} as const;
 
 export function AIChatbot() {
   const router = useRouter();
@@ -63,7 +69,7 @@ export function AIChatbot() {
       setMessages([{
         id: 'welcome',
         role: 'assistant',
-        content: 'Xin chào! 👋 Mình là Robot FinHabit — trợ lý tài chính & thói quen của bạn. Bạn có thể nói tự nhiên, ví dụ: "Ăn trưa 50k" hoặc "Thêm thói quen chạy bộ 5km". Hỏi gì cũng được nhé! 😊',
+        content: 'Xin chào! 👋 Mình là Robot FinHabit — trợ lý tài chính & thói quen của bạn. Bạn có thể nhập giao dịch, cập nhật thói quen, hỏi tư vấn tài chính hoặc đơn giản là tâm sự bất cứ điều gì! 😊',
         timestamp: new Date()
       }]);
     }
@@ -86,7 +92,13 @@ export function AIChatbot() {
 
     startTransition(async () => {
       try {
-        const result = await parseNaturalLanguage(messageText);
+        // Build history from current messages (exclude system/welcome, keep last 6 turns)
+        const history: ChatTurn[] = messages
+          .filter(m => m.id !== 'welcome' && m.content.trim())
+          .slice(-6)
+          .map(m => ({ role: m.role, content: m.content }));
+
+        const result = await parseNaturalLanguage(messageText, history);
         
         const assistantMsg: ChatMessage = {
           id: `ai-${Date.now()}`,
@@ -108,7 +120,7 @@ export function AIChatbot() {
         isSubmittingRef.current = false;
       }
     });
-  }, [input, isPending, startTransition]);
+  }, [input, isPending, startTransition, messages]);
 
   const handleConfirm = async (msg: ChatMessage) => {
     if (!msg.parseResult || executingId) return;
@@ -269,7 +281,7 @@ export function AIChatbot() {
                             {msg.parseResult.type === 'transaction' ? (
                               <div className="flex items-center gap-3">
                                 <div className={cn(
-                                  "h-10 w-10 rounded-xl flex items-center justify-center",
+                                  "h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
                                   msg.parseResult.data.transactionType === 'income' ? 'bg-emerald-500/10' : msg.parseResult.data.transactionType === 'saving' ? 'bg-indigo-500/10' : 'bg-rose-500/10'
                                 )}>
                                   <Wallet className={cn("h-5 w-5", 
@@ -281,10 +293,68 @@ export function AIChatbot() {
                                   <p className="text-[10px] text-foreground/40">{msg.parseResult.data.category} · {msg.parseResult.data.date}</p>
                                 </div>
                                 <p className={cn("text-base font-bold font-heading shrink-0",
-                                  msg.parseResult.data.transactionType === 'income' ? 'text-emerald-500' : msg.parseResult.data.transactionType === 'saving' ? 'text-indigo-500' : 'text-rose-500'
+                                  TYPE_COLOR[msg.parseResult.data.transactionType].amount
                                 )}>
-                                  {msg.parseResult.data.transactionType === 'income' ? '+' : '-'}{msg.parseResult.data.amount.toLocaleString('vi-VN')}đ
+                                  {TYPE_COLOR[msg.parseResult.data.transactionType].prefix}{msg.parseResult.data.amount.toLocaleString('vi-VN')}đ
                                 </p>
+                              </div>
+                            ) : msg.parseResult.type === 'batch_transaction' ? (
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <p className="text-[11px] font-bold text-foreground/50 uppercase tracking-wider">{msg.parseResult.data.length} giao dịch</p>
+                                  <p className="text-[11px] font-bold text-foreground/50">
+                                    Tổng: {msg.parseResult.data.reduce((s, t) => s + t.amount, 0).toLocaleString('vi-VN')}đ
+                                  </p>
+                                </div>
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                  {(msg.parseResult.data as TransactionItem[]).map((t, i) => {
+                                    const c = TYPE_COLOR[t.transactionType];
+                                    return (
+                                      <div key={i} className="flex items-center gap-2.5">
+                                        <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-md shrink-0', c.badge)}>
+                                          {t.transactionType === 'income' ? 'Thu' : t.transactionType === 'saving' ? 'Tiết' : 'Chi'}
+                                        </span>
+                                        <span className="flex-1 text-[12px] font-medium text-foreground truncate">{t.title}</span>
+                                        <span className={cn('text-[12px] font-bold shrink-0', c.amount)}>
+                                          {c.prefix}{t.amount.toLocaleString('vi-VN')}đ
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : msg.parseResult.type === 'habit_progress' ? (
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <p className="text-[11px] font-bold text-foreground/50 uppercase tracking-wider">Tiến độ thói quen</p>
+                                  <p className="text-[11px] font-bold text-foreground/50">{msg.parseResult.data.length} thói quen</p>
+                                </div>
+                                <div className="space-y-2.5">
+                                  {(msg.parseResult.data as HabitProgressItem[]).map((h, i) => {
+                                    const pct = Math.min(100, Math.round((h.current_value / Math.max(h.goal_value, 1)) * 100));
+                                    const isDone = pct >= 100;
+                                    const Icon = ICON_MAP[h.icon] || Target;
+                                    return (
+                                      <div key={i} className="space-y-1.5">
+                                        <div className="flex items-center gap-2">
+                                          <div className={cn('h-6 w-6 rounded-lg flex items-center justify-center shrink-0 bg-foreground/5')}>
+                                            <Icon className={cn('h-3.5 w-3.5', h.color)} />
+                                          </div>
+                                          <span className="flex-1 text-[12px] font-semibold text-foreground truncate">{h.habit_name}</span>
+                                          <span className={cn('text-[11px] font-bold shrink-0', isDone ? 'text-emerald-500' : 'text-foreground/60')}>
+                                            {isDone ? '✅ Xong!' : `${h.current_value}/${h.goal_value} ${h.unit}`}
+                                          </span>
+                                        </div>
+                                        <div className="h-1.5 bg-foreground/10 rounded-full overflow-hidden">
+                                          <div
+                                            className={cn('h-full rounded-full transition-all', isDone ? 'bg-emerald-500' : 'bg-indigo-500')}
+                                            style={{ width: `${pct}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             ) : msg.parseResult.type === 'habit' ? (
                               <div className="flex items-center gap-3">
@@ -308,7 +378,7 @@ export function AIChatbot() {
                           {/* Confirm/Cancel Buttons */}
                           <div className="flex border-t border-[var(--border)]">
                             <button 
-                              onClick={() => setMessages(prev => prev.filter(m => m.id !== msg.id || (m.parseResult = undefined, true)))}
+                              onClick={() => setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, parseResult: undefined } : m))}
                               disabled={executingId === msg.id}
                               className="flex-1 py-2.5 text-xs font-semibold text-foreground/50 hover:bg-foreground/5 transition-colors disabled:opacity-50 border-r border-[var(--border)]"
                             >
@@ -324,7 +394,7 @@ export function AIChatbot() {
                               ) : (
                                 <>
                                   <Check className="h-3.5 w-3.5" />
-                                  Xác nhận & Lưu
+                                  {msg.parseResult.type === 'batch_transaction' ? `Lưu tất cả ${msg.parseResult.data.length}` : msg.parseResult.type === 'habit_progress' ? `Cập nhật tiến độ` : 'Xác nhận & Lưu'}
                                 </>
                               )}
                             </button>
