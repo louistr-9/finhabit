@@ -17,7 +17,7 @@ type NavItem = {
   label: string;
   icon: any;
   href?: string;
-  subItems?: { label: string; href: string }[];
+  subItems?: { label: string; href: string; isBeta?: boolean; isComingSoon?: boolean }[];
 };
 
 const navItems: NavItem[] = [
@@ -26,7 +26,9 @@ const navItems: NavItem[] = [
     label: 'Tài chính', icon: Wallet, 
     subItems: [
       { label: 'Dòng tiền', href: '/finance' },
-      { label: 'Nợ & Cho vay', href: '/finance/debts' },
+      { label: 'Tài sản', href: '/finance/assets', isBeta: true },
+      { label: 'Nợ & Cho vay', href: '/finance/debts', isBeta: true },
+      { label: 'Net Worth', href: '/net-worth', isComingSoon: true },
     ]
   },
   { label: 'Thói quen', icon: CheckSquare, href: '/habit' },
@@ -169,13 +171,23 @@ function SubMenuItem({
                     href={sub.href}
                     onClick={onNavClick}
                     className={cn(
-                      'block px-3 py-2 text-sm font-medium rounded-md transition-colors',
+                      'flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-colors',
                       isSubActive 
                         ? 'text-emerald-teal bg-emerald-teal/10' 
                         : 'text-foreground/60 hover:text-foreground hover:bg-slate-50'
                     )}
                   >
-                    {sub.label}
+                    <span>{sub.label}</span>
+                    {sub.isBeta && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-teal/10 text-emerald-teal border border-emerald-teal/20 font-bold uppercase tracking-wider">
+                        Beta
+                      </span>
+                    )}
+                    {sub.isComingSoon && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-600 border border-amber-200 font-bold uppercase tracking-wider whitespace-nowrap">
+                        Sắp ra mắt
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -225,12 +237,21 @@ function SidebarContent({
   return (
     <>
       {/* Brand */}
-      <div className="mb-10 flex items-center px-4 shrink-0">
-        <div className="h-8 w-8 rounded-lg bg-emerald-teal flex items-center justify-center mr-3">
-          <span className="text-white font-bold text-lg">F</span>
+      <Link href="/dashboard" className="mb-10 flex items-center px-4 shrink-0 group">
+        <div className="relative h-9 w-9 mr-3 transition-transform duration-300 group-hover:scale-110">
+          <Image 
+            src="/logo.png" 
+            alt="FinHabit Logo" 
+            fill
+            className="object-contain"
+            priority
+          />
         </div>
-        <h1 className="text-xl font-heading font-bold text-foreground">FinHabit</h1>
-      </div>
+        <h1 className="text-xl font-heading font-bold flex items-center tracking-tight">
+          <span className="text-brand-indigo dark:text-blue-400">Fin</span>
+          <span className="text-brand-lime">Habit</span>
+        </h1>
+      </Link>
 
       {/* Navigation */}
       <nav className="space-y-2 flex-1 overflow-y-auto py-2 pr-2 scrollbar-hide">

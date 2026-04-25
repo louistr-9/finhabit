@@ -3,16 +3,19 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isToday, isBefore, startOfDay, subDays, addDays, isSameDay } from 'date-fns';
+import Link from 'next/link';
 import { 
   Home, Coffee, Zap, Wallet, ShoppingBag, ChevronLeft, ChevronRight, 
-  Activity, Calendar, Loader2, Pencil, Trash2, X, AlertTriangle,
+  Activity, Calendar, Loader2, Pencil, Trash2, X, AlertTriangle, ChevronDown,
   Car, Heart, Theater, BookOpen, HelpCircle, Landmark, Briefcase, 
   Gift, TrendingUp, ShieldCheck, Vault, LineChart, PiggyBank, Coins,
   ArrowDownRight, ArrowUpRight, Plus, MoreVertical, FileText, Lightbulb,
-  Settings, Repeat, RotateCcw
+  Settings, Repeat, RotateCcw, Target
 } from 'lucide-react';
 import { getMonthlyTransactions, addTransaction, addTransactionsBatch, deleteTransaction, deleteAllTransactions, updateTransaction, getBalanceHubData, aiCategorize } from './actions';
 import { createRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction, getRecurringTransactions, type RecurringTransaction } from './recurringActions';
+import { QuickConfig } from './QuickConfig';
+
 const EXPENSE_CATEGORIES = ['Ăn uống', 'Di chuyển', 'Nhà cửa & Hóa đơn', 'Mua sắm', 'Sức khỏe', 'Giải trí & Quan hệ', 'Học tập & Phát triển', 'Chi tiêu khác'];
 const INCOME_CATEGORIES = ['Lương & Thưởng', 'Làm thêm (Freelance)', 'Quà tặng & Thu nhập khác', 'Lãi & Cổ tức'];
 const SAVING_CATEGORIES = ['Quỹ dự phòng', 'Tích lũy dài hạn', 'Đầu tư', 'Bỏ heo/Tiết kiệm tự do'];
@@ -43,14 +46,22 @@ const CATEGORY_MAP: Record<string, { icon: any, color: string, bg: string }> = {
 };
 
 interface FinanceClientProps {
-  initialBalanceInfo: { balance: number; monthlyIncome: number };
+  initialBalanceInfo: { 
+    balance: number; 
+    monthlyIncome: number;
+    monthlySpent: number;
+    totalSavings: number;
+    initialBalance: number;
+    monthlyBudget: number;
+  };
   initialTransactions: any[];
   initialYear: number;
   initialMonth: number;
   initialRecurring: RecurringTransaction[];
+  savingAssets?: any[];
 }
 
-export function FinanceClient({ initialBalanceInfo, initialTransactions, initialYear, initialMonth, initialRecurring }: FinanceClientProps) {
+export function FinanceClient({ initialBalanceInfo, initialTransactions, initialYear, initialMonth, initialRecurring, savingAssets = [] }: FinanceClientProps) {
   const [currentDate, setCurrentDate] = useState(new Date(initialYear, initialMonth - 1, new Date().getDate()));
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth() + 1;
@@ -67,6 +78,7 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showDailyDetailModal, setShowDailyDetailModal] = useState(false);
   const [mobileTab, setMobileTab] = useState<'nhap' | 'giaodich' | 'lich'>('nhap');
+  const [calendarView, setCalendarView] = useState<'weekly' | 'monthly'>('weekly');
 
   useEffect(() => {
     setIsMounted(true);
@@ -74,6 +86,7 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [amountDisplay, setAmountDisplay] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -82,8 +95,19 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const settingsDropdownRef = useRef<HTMLDivElement>(null);
 
+  const [showSavingDropdown, setShowSavingDropdown] = useState(false);
+  const savingDropdownRef = useRef<HTMLDivElement>(null);
+  const [selectedSavingAssetId, setSelectedSavingAssetId] = useState<string>('');
+
+  useEffect(() => {
+    if (transactionType === 'saving' && savingAssets.length > 0 && !selectedSavingAssetId) {
+      setSelectedSavingAssetId(savingAssets[0].id);
+    }
+  }, [transactionType, savingAssets, selectedSavingAssetId]);
+
   // Recurring transactions state
   const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [showQuickConfig, setShowQuickConfig] = useState(false);
   const [recurringList, setRecurringList] = useState<RecurringTransaction[]>(initialRecurring);
   const [recurringSubmitting, setRecurringSubmitting] = useState(false);
   const [recurringForm, setRecurringForm] = useState({
@@ -94,6 +118,7 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
     frequency: 'monthly' as 'daily' | 'weekly' | 'monthly',
     day_of_month: new Date().getDate(),
     day_of_week: 1,
+    asset_id: '',
   });
 
   const refreshRecurring = async () => {
@@ -105,6 +130,10 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
     const handleClickOutside = (event: MouseEvent) => {
       if (settingsDropdownRef.current && !settingsDropdownRef.current.contains(event.target as Node)) {
         setShowSettingsDropdown(false);
+        setShowQuickConfig(false);
+      }
+      if (savingDropdownRef.current && !savingDropdownRef.current.contains(event.target as Node)) {
+        setShowSavingDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -227,12 +256,23 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
         }
       }
       await fetchDashboardData();
+      
+      if (transactionType === 'saving' && !editingId) {
+        const amountStr = formData.get('amount') as string;
+        const amount = Number(amountStr?.replace(/\D/g, '') || 0);
+        const assetId = formData.get('asset_id') as string;
+        const assetName = savingAssets.find(a => a.id === assetId)?.name || 'mục tiêu';
+        setSuccessMessage(`Xịn quá! Bạn vừa tích lũy thêm ${amount.toLocaleString('vi-VN')}đ cho ${assetName}.`);
+        setTimeout(() => setSuccessMessage(null), 5000);
+      }
+
       if (formRef.current) formRef.current.reset();
       setAmountDisplay('');
       setSelectedCategory(transactionType === 'income' ? 'Thu nhập khác' : 'Chi tiêu khác');
     } catch (e: any) {
       alert("Lỗi: " + (e.message || "Đã có lỗi xảy ra"));
     }
+    setSelectedSavingAssetId(savingAssets[0]?.id || '');
     setIsSubmitting(false);
     isSubmittingRef.current = false;
   };
@@ -244,6 +284,7 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
     
     const absVal = Math.abs(t.amount);
     setAmountDisplay(formatInputAmount(absVal.toString()));
+    setSelectedSavingAssetId(t.asset_id || '');
     
     const form = formRef.current;
     if (form) {
@@ -311,18 +352,34 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
       alert('Vui lòng nhập đầy đủ thông tin!');
       return;
     }
+    
+    let submitAssetId = recurringForm.asset_id;
+    let submitCategory = recurringForm.category;
+
+    if (recurringForm.type === 'saving') {
+      if (savingAssets.length === 0) {
+        alert('Vui lòng tạo ít nhất một mục tiêu tiết kiệm ở tab Tài sản trước!');
+        return;
+      }
+      if (!submitAssetId) {
+        submitAssetId = savingAssets[0].id;
+        submitCategory = savingAssets[0].name;
+      }
+    }
+
     setRecurringSubmitting(true);
     try {
       await createRecurringTransaction({
         title: recurringForm.title.trim(),
         amount,
-        category: recurringForm.category,
+        category: submitCategory,
         type: recurringForm.type,
         frequency: recurringForm.frequency,
         day_of_month: recurringForm.frequency === 'monthly' ? recurringForm.day_of_month : undefined,
         day_of_week: recurringForm.frequency === 'weekly' ? recurringForm.day_of_week : undefined,
+        asset_id: recurringForm.type === 'saving' ? submitAssetId : null,
       });
-      setRecurringForm({ title: '', amount: '', category: 'Chi tiêu khác', type: 'expense', frequency: 'monthly', day_of_month: new Date().getDate(), day_of_week: 1 });
+      setRecurringForm({ title: '', amount: '', category: 'Chi tiêu khác', type: 'expense', frequency: 'monthly', day_of_month: new Date().getDate(), day_of_week: 1, asset_id: '' });
       await refreshRecurring();
     } catch (e: any) {
       alert(e.message);
@@ -491,7 +548,7 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-2 w-56 bg-card border border-[var(--border)] shadow-xl rounded-xl z-50 overflow-hidden"
+                  className="absolute right-0 mt-2 w-72 bg-card border border-[var(--border)] shadow-xl rounded-xl z-50 overflow-hidden"
                 >
                   <div className="p-1.5 flex flex-col">
                     <button 
@@ -500,6 +557,36 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
                     >
                       <Repeat className="w-4 h-4 text-indigo-500" /> Khoản định kỳ
                     </button>
+                    <div className="h-[1px] bg-[var(--border)] my-1 mx-2" />
+                    
+                    {/* Collapsible Quick Config Section */}
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setShowQuickConfig(!showQuickConfig); }}
+                      className="flex items-center justify-between px-3 py-2.5 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-foreground/80 hover:text-foreground transition-colors w-full text-left"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Target className="w-4 h-4 text-indigo-500" /> Thiết lập nhanh
+                      </div>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showQuickConfig ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    <AnimatePresence>
+                      {showQuickConfig && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <QuickConfig 
+                            initialBalance={initialBalanceInfo.initialBalance} 
+                            monthlyBudget={initialBalanceInfo.monthlyBudget}
+                            variant="dropdown"
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
                     <div className="h-[1px] bg-[var(--border)] my-1 mx-2" />
                     <button 
                       onClick={() => setShowResetAllModal(true)}
@@ -577,41 +664,182 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
             </div>
 
             <form ref={formRef} action={handleActionSubmit} className="space-y-4">
-              <div>
-                <label className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider mb-1.5 block">Nội dung</label>
-                <input 
-                  type="text" 
-                  name="title"
-                  required
-                  placeholder="Ví dụ: Ăn sáng phở bò..." 
-                  className="w-full text-sm bg-background border border-[var(--border)] rounded-xl px-4 py-2.5 outline-none focus:border-emerald-teal focus:ring-1 focus:ring-emerald-teal/30 transition-all placeholder:text-foreground/30" 
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider mb-1.5 block">Danh mục</label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                     <ShoppingBag className="w-3 h-3 text-foreground/50" />
-                  </div>
-                  <select 
-                    name="category" 
-                    required 
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none transition-all cursor-pointer bg-background focus:border-emerald-teal focus:ring-1 focus:ring-emerald-teal/30 appearance-none"
+              {transactionType === 'saving' && savingAssets.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-6 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-[var(--border)] text-center">
+                  <PiggyBank className="w-10 h-10 text-indigo-400 mb-3" strokeWidth={1.5} />
+                  <p className="text-sm font-medium text-foreground/80 mb-1">Chưa có mục tiêu tiết kiệm</p>
+                  <p className="text-xs text-foreground/50 mb-4 max-w-[200px]">Hãy tạo một Heo đất hoặc Sổ tiết kiệm để bắt đầu tích lũy.</p>
+                  <Link 
+                    href="/finance/assets"
+                    className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
                   >
-                    {(transactionType === 'expense' 
-                      ? EXPENSE_CATEGORIES 
-                      : transactionType === 'income' 
-                        ? INCOME_CATEGORIES 
-                        : SAVING_CATEGORIES
-                    ).map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                    Tạo khoản tiết kiệm
+                  </Link>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider mb-1.5 block">Nội dung</label>
+                    <input 
+                      type="text" 
+                      name="title"
+                      required={transactionType !== 'saving'}
+                      placeholder={transactionType === 'saving' ? "Không bắt buộc (Tự động lấy tên mục tiêu)" : "Ví dụ: Ăn sáng phở bò..."}
+                      className="w-full text-sm bg-background border border-[var(--border)] rounded-xl px-4 py-2.5 outline-none focus:border-emerald-teal focus:ring-1 focus:ring-emerald-teal/30 transition-all placeholder:text-foreground/30" 
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider mb-1.5 block">
+                      {transactionType === 'saving' ? 'Gửi vào mục tiêu' : 'Danh mục'}
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-md bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                         {transactionType === 'saving' ? <PiggyBank className="w-3 h-3 text-indigo-500" /> : <ShoppingBag className="w-3 h-3 text-foreground/50" />}
+                      </div>
+                      {transactionType === 'saving' ? (
+                        <div className="relative w-full" ref={savingDropdownRef}>
+                          <input type="hidden" name="asset_id" value={selectedSavingAssetId} />
+                          <button
+                            type="button"
+                            onClick={() => setShowSavingDropdown(!showSavingDropdown)}
+                            className={`w-full flex items-center justify-between pl-10 pr-4 py-2.5 text-sm border rounded-xl outline-none transition-all focus:ring-1 text-left ${showSavingDropdown ? 'border-indigo-500 ring-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/10' : 'border-[var(--border)] bg-background hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                          >
+                            <span className="truncate font-semibold text-indigo-900 dark:text-indigo-100">
+                              {savingAssets.find(a => a.id === selectedSavingAssetId)?.name || 'Chọn loại hình tiết kiệm...'}
+                            </span>
+                            <ChevronDown className={`w-4 h-4 text-foreground/50 transition-transform ${showSavingDropdown ? 'rotate-180' : ''}`} />
+                          </button>
+                          
+                          <AnimatePresence>
+                            {showSavingDropdown && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 5 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute left-0 right-0 top-full mt-2 bg-card border border-[var(--border)] shadow-xl rounded-xl z-50 overflow-hidden max-h-[350px] flex flex-col"
+                              >
+                                <div className="p-2 overflow-y-auto no-scrollbar">
+                                  {/* Tiết kiệm linh hoạt */}
+                                  <div className="mb-2">
+                                    <h4 className="text-[10px] font-bold text-foreground/40 uppercase tracking-wider px-3 mb-1.5 mt-1">Tiết kiệm linh hoạt</h4>
+                                    {savingAssets.filter(a => a.symbol !== 'TERM').map(asset => {
+                                      const progress = asset.target > 0 ? Math.min(100, (Number(asset.value) / Number(asset.target)) * 100) : 0;
+                                      return (
+                                        <button
+                                          key={asset.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedSavingAssetId(asset.id);
+                                            setShowSavingDropdown(false);
+                                          }}
+                                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-left transition-colors ${selectedSavingAssetId === asset.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground'}`}
+                                        >
+                                          <div className="flex items-center gap-3 w-full overflow-hidden">
+                                            <PiggyBank className="w-4 h-4 text-indigo-500 shrink-0" strokeWidth={2} />
+                                            <div className="flex-1 truncate">
+                                              <span className="block font-medium truncate">{asset.name}</span>
+                                              {asset.target > 0 && (
+                                                <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                                                  <div className="bg-emerald-teal h-full transition-all" style={{ width: `${progress}%` }} />
+                                                </div>
+                                              )}
+                                            </div>
+                                            {asset.target > 0 && (
+                                              <span className="text-xs font-bold text-emerald-teal shrink-0 ml-2">
+                                                {Math.round(progress)}%
+                                              </span>
+                                            )}
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  
+                                  <div className="h-[1px] bg-[var(--border)] my-2 mx-2" />
+                                  
+                                  {/* Tiết kiệm có kỳ hạn */}
+                                  <div className="my-2">
+                                    <h4 className="text-[10px] font-bold text-foreground/40 uppercase tracking-wider px-3 mb-1.5">Tiết kiệm có kỳ hạn</h4>
+                                    
+                                    {savingAssets.filter(a => a.symbol === 'TERM').map(asset => {
+                                      const progress = asset.target > 0 ? Math.min(100, (Number(asset.value) / Number(asset.target)) * 100) : 0;
+                                      return (
+                                        <button
+                                          key={asset.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedSavingAssetId(asset.id);
+                                            setShowSavingDropdown(false);
+                                          }}
+                                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-left transition-colors ${selectedSavingAssetId === asset.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground'}`}
+                                        >
+                                          <div className="flex items-center gap-3 w-full overflow-hidden">
+                                            <Landmark className="w-4 h-4 text-indigo-500 shrink-0" strokeWidth={2} />
+                                            <div className="flex-1 truncate">
+                                              <span className="block font-medium truncate">{asset.name}</span>
+                                              {asset.target > 0 && (
+                                                <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                                                  <div className="bg-emerald-teal h-full transition-all" style={{ width: `${progress}%` }} />
+                                                </div>
+                                              )}
+                                            </div>
+                                            {asset.target > 0 && (
+                                              <span className="text-xs font-bold text-emerald-teal shrink-0 ml-2">
+                                                {Math.round(progress)}%
+                                              </span>
+                                            )}
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+
+                                    {savingAssets.filter(a => a.symbol === 'TERM').length === 0 && (
+                                      <Link href="/finance/assets" className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground/70 transition-colors group">
+                                        <div className="flex items-center gap-3">
+                                          <Landmark className="w-4 h-4 text-indigo-400" strokeWidth={2} />
+                                          <span className="font-medium">Thêm sổ tiết kiệm/gửi NH</span>
+                                        </div>
+                                        <Plus className="w-4 h-4 text-foreground/30 group-hover:text-foreground/70 transition-colors" />
+                                      </Link>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="h-[1px] bg-[var(--border)] my-2 mx-2" />
+                                  
+                                  {/* Quản lý */}
+                                  <div className="mt-2 mb-1">
+                                    <h4 className="text-[10px] font-bold text-foreground/40 uppercase tracking-wider px-3 mb-1.5">Quản lý</h4>
+                                    <Link href="/finance/assets" className="w-full flex items-center gap-3 px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground/80 hover:text-foreground transition-colors rounded-lg">
+                                      <Settings className="w-4 h-4 text-foreground/50" />
+                                      <span className="font-medium">Quản lý các hũ tiết kiệm</span>
+                                    </Link>
+                                    <Link href="/finance/assets" className="w-full flex items-center gap-3 px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground/80 hover:text-foreground transition-colors rounded-lg">
+                                      <Plus className="w-4 h-4 text-foreground/50" />
+                                      <span className="font-medium">Thêm hũ mới</span>
+                                    </Link>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      ) : (
+                        <select 
+                          name="category" 
+                          required 
+                          value={selectedCategory}
+                          onChange={(e) => setSelectedCategory(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none transition-all cursor-pointer bg-background focus:border-emerald-teal focus:ring-1 focus:ring-emerald-teal/30 appearance-none"
+                        >
+                          {(transactionType === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
 
               <div>
                 <label className="text-[11px] font-bold text-foreground/60 uppercase tracking-wider mb-1.5 block">Số tiền</label>
@@ -696,18 +924,36 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
                   )}
                   <button 
                     type="submit" 
-                    disabled={isSubmitting}
-                    className={`flex-1 py-3.5 rounded-xl text-sm font-bold text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${editingId ? 'bg-deep-violet' : 'bg-emerald-teal'}`}
+                    disabled={isSubmitting || (transactionType === 'saving' && savingAssets.length === 0)}
+                    className={`flex-1 py-3.5 rounded-xl text-sm font-bold text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${editingId ? 'bg-deep-violet' : (transactionType === 'saving' ? 'bg-indigo-600' : 'bg-emerald-teal')}`}
                   >
                     {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : (editingId ? 'Lưu thay đổi' : (pendingTransactions.length > 0 ? `Lưu tất cả` : 'Lưu giao dịch'))}
                   </button>
                 </div>
-                {!editingId && pendingTransactions.length === 0 && (
+                {!editingId && pendingTransactions.length === 0 && !successMessage && (
                   <p className="text-center text-[10px] text-foreground/40 mt-3 font-medium flex items-center justify-center gap-1">
                     <Zap className="w-3 h-3" /> Nhập xong có thể bấm "Thêm tiếp" để nhập hàng loạt
                   </p>
                 )}
+                
+                <AnimatePresence>
+                  {successMessage && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="mt-4 p-3 bg-indigo-50 border border-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800 rounded-xl flex items-start gap-2"
+                    >
+                      <PiggyBank className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                      <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+                        {successMessage}
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
+              </>
+              )}
             </form>
           </motion.div>
         </div>
@@ -726,6 +972,20 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
               <h3 className="text-base font-heading font-bold text-foreground">
                  Chọn ngày để xem chi tiết giao dịch
               </h3>
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                <button 
+                  onClick={() => setCalendarView('weekly')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${calendarView === 'weekly' ? 'bg-emerald-teal text-white shadow-sm' : 'text-foreground/60 hover:text-foreground'}`}
+                >
+                  Xem nhanh
+                </button>
+                <button 
+                  onClick={() => setCalendarView('monthly')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${calendarView === 'monthly' ? 'bg-emerald-teal text-white shadow-sm' : 'text-foreground/60 hover:text-foreground'}`}
+                >
+                  Lịch đầy đủ
+                </button>
+              </div>
             </div>
 
             <div className="w-full relative">
@@ -735,74 +995,143 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
                  </div>
               )}
               
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => setWeekCursor(prev => subDays(prev, 7))} 
-                  className="w-8 h-8 shrink-0 flex items-center justify-center rounded-xl border border-[var(--border)] hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-foreground/60 hover:text-foreground"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
+              {calendarView === 'monthly' ? (
+                <div className="w-full">
+                  <div className="grid grid-cols-7 gap-1 mb-2">
+                    {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map(d => (
+                      <div key={d} className="text-center text-[10px] font-bold text-foreground/50">{d}</div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {(() => {
+                      const monthStart = startOfMonth(currentDate);
+                      const monthEnd = endOfMonth(currentDate);
+                      const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
+                      const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
+                      const days = eachDayOfInterval({ start: startDate, end: endDate });
 
-                <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar justify-between px-1">
-                  {(() => {
-                    const weekStart = startOfWeek(weekCursor, { weekStartsOn: 1 });
-                    const days = eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
+                      return days.map((date, i) => {
+                        const dayNum = date.getDate();
+                        const isCurrentMonth = isSameMonth(date, currentDate);
+                        const isSelected = selectedDate === dayNum && isCurrentMonth;
+                        const isTodayDate = isMounted && isSameDay(date, new Date());
+                        
+                        const txs = isCurrentMonth ? (transactionsMap[dayNum] || []) : [];
+                        const income = txs.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+                        const expense = txs.filter(t => t.type === 'expense').reduce((acc, t) => acc + Math.abs(t.amount), 0);
+                        const net = income - expense - (txs.filter(t => t.type === 'saving').reduce((acc, t) => acc + Math.abs(t.amount), 0));
 
-                    return days.map((date, i) => {
-                      const dayNum = date.getDate();
-                      const isCurrentMonth = isSameMonth(date, currentDate);
-                      const isSelected = selectedDate === dayNum && isCurrentMonth;
-                      const isTodayDate = isMounted && isSameDay(date, new Date());
-                      
-                      const txs = isCurrentMonth ? (transactionsMap[dayNum] || []) : [];
-                      const income = txs.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-                      const expense = txs.filter(t => t.type === 'expense').reduce((acc, t) => acc + Math.abs(t.amount), 0);
-                      const net = income - expense - (txs.filter(t => t.type === 'saving').reduce((acc, t) => acc + Math.abs(t.amount), 0));
-                      
-                      return (
-                        <div 
-                          key={i} 
-                          onClick={() => {
-                            setSelectedDate(dayNum);
-                            if (!isCurrentMonth) {
-                              setCurrentDate(date);
-                              setWeekCursor(date);
-                            }
-                            setListFilter('today');
-                          }}
-                          className={`flex-1 min-w-[3.5rem] flex flex-col items-center justify-center py-2 px-1 cursor-pointer transition-all rounded-xl bg-card ${isSelected ? 'border-2 border-emerald-teal shadow-sm' : 'border border-[var(--border)] hover:border-emerald-teal/50'} ${isTodayDate && !isSelected ? 'border border-emerald-teal/60' : ''}`}
-                        >
-                          <span className={`text-[13px] font-bold ${isSelected ? 'text-emerald-teal' : 'text-foreground'}`}>
-                            {dayNum}
-                          </span>
-                          <span className="text-[10px] font-medium text-foreground/50 mb-1">
-                            {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][date.getDay()]}
-                          </span>
-                          
-                          {isCurrentMonth ? (
-                            <span className={`text-[11px] font-bold ${net > 0 ? 'text-emerald-500' : net < 0 ? 'text-rose-500' : 'text-slate-500'}`}>
-                              {net !== 0 ? (net > 0 ? '+' : '') + formatCompact(net) : '0đ'}
+                        return (
+                          <div 
+                            key={i} 
+                            onClick={() => {
+                              if (!isCurrentMonth) {
+                                setCurrentDate(date);
+                                setWeekCursor(date);
+                              }
+                              setSelectedDate(date.getDate());
+                              setListFilter('today');
+                            }}
+                            className={`min-h-[3rem] sm:min-h-[3.5rem] flex flex-col items-center justify-center py-1 px-0.5 cursor-pointer transition-all rounded-lg bg-card ${isSelected ? 'border-2 border-emerald-teal shadow-sm' : 'border border-[var(--border)] hover:border-emerald-teal/50'} ${isTodayDate && !isSelected ? 'border border-emerald-teal/60' : ''} ${!isCurrentMonth ? 'opacity-40 bg-slate-50 dark:bg-slate-800/50' : ''}`}
+                          >
+                            <span className={`text-[11px] sm:text-[13px] font-bold ${isSelected ? 'text-emerald-teal' : 'text-foreground'}`}>
+                              {dayNum}
                             </span>
-                          ) : (
-                            <span className="text-[11px] font-bold text-slate-300 dark:text-slate-700">0đ</span>
-                          )}
+                            
+                            {isCurrentMonth ? (
+                              <span className={`text-[9px] sm:text-[10px] font-bold mt-0.5 ${net > 0 ? 'text-emerald-500' : net < 0 ? 'text-rose-500' : 'text-transparent'}`}>
+                                {net !== 0 ? (net > 0 ? '+' : '') + formatCompact(net) : '0'}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] sm:text-[10px] font-bold mt-0.5 text-transparent">0</span>
+                            )}
 
-                          <div className="h-1.5 mt-1 flex items-center justify-center">
-                            <span className={`w-1.5 h-1.5 rounded-full ${isCurrentMonth ? (income === 0 && expense === 0 ? 'bg-slate-200 dark:bg-slate-700' : (net >= 0 ? 'bg-emerald-500' : 'bg-rose-500')) : 'bg-slate-200 dark:bg-slate-700'}`} />
+                            <div className="h-1.5 mt-0.5 flex items-center justify-center gap-0.5">
+                              {isCurrentMonth && (income > 0 || expense > 0) ? (
+                                <>
+                                  {income > 0 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                                  {expense > 0 && <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
+                                </>
+                              ) : (
+                                <span className="w-1.5 h-1.5 rounded-full bg-transparent" />
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    });
-                  })()}
+                        );
+                      });
+                    })()}
+                  </div>
                 </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setWeekCursor(prev => subDays(prev, 7))} 
+                    className="w-8 h-8 shrink-0 flex items-center justify-center rounded-xl border border-[var(--border)] hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-foreground/60 hover:text-foreground"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
 
-                <button 
-                  onClick={() => setWeekCursor(prev => addDays(prev, 7))} 
-                  className="w-8 h-8 shrink-0 flex items-center justify-center rounded-xl border border-[var(--border)] hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-foreground/60 hover:text-foreground"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
+                  <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar justify-between px-1">
+                    {(() => {
+                      const weekStart = startOfWeek(weekCursor, { weekStartsOn: 1 });
+                      const days = eachDayOfInterval({ start: weekStart, end: addDays(weekStart, 6) });
+
+                      return days.map((date, i) => {
+                        const dayNum = date.getDate();
+                        const isCurrentMonth = isSameMonth(date, currentDate);
+                        const isSelected = selectedDate === dayNum && isCurrentMonth;
+                        const isTodayDate = isMounted && isSameDay(date, new Date());
+                        
+                        const txs = isCurrentMonth ? (transactionsMap[dayNum] || []) : [];
+                        const income = txs.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+                        const expense = txs.filter(t => t.type === 'expense').reduce((acc, t) => acc + Math.abs(t.amount), 0);
+                        const net = income - expense - (txs.filter(t => t.type === 'saving').reduce((acc, t) => acc + Math.abs(t.amount), 0));
+                        
+                        return (
+                          <div 
+                            key={i} 
+                            onClick={() => {
+                              setSelectedDate(dayNum);
+                              if (!isCurrentMonth) {
+                                setCurrentDate(date);
+                                setWeekCursor(date);
+                              }
+                              setListFilter('today');
+                            }}
+                            className={`flex-1 min-w-[3.5rem] flex flex-col items-center justify-center py-2 px-1 cursor-pointer transition-all rounded-xl bg-card ${isSelected ? 'border-2 border-emerald-teal shadow-sm' : 'border border-[var(--border)] hover:border-emerald-teal/50'} ${isTodayDate && !isSelected ? 'border border-emerald-teal/60' : ''}`}
+                          >
+                            <span className={`text-[13px] font-bold ${isSelected ? 'text-emerald-teal' : 'text-foreground'}`}>
+                              {dayNum}
+                            </span>
+                            <span className="text-[10px] font-medium text-foreground/50 mb-1">
+                              {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][date.getDay()]}
+                            </span>
+                            
+                            {isCurrentMonth ? (
+                              <span className={`text-[11px] font-bold ${net > 0 ? 'text-emerald-500' : net < 0 ? 'text-rose-500' : 'text-slate-500'}`}>
+                                {net !== 0 ? (net > 0 ? '+' : '') + formatCompact(net) : '0đ'}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-slate-300 dark:text-slate-700">0đ</span>
+                            )}
+
+                            <div className="h-1.5 mt-1 flex items-center justify-center">
+                              <span className={`w-1.5 h-1.5 rounded-full ${isCurrentMonth ? (income === 0 && expense === 0 ? 'bg-slate-200 dark:bg-slate-700' : (net >= 0 ? 'bg-emerald-500' : 'bg-rose-500')) : 'bg-slate-200 dark:bg-slate-700'}`} />
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+
+                  <button 
+                    onClick={() => setWeekCursor(prev => addDays(prev, 7))} 
+                    className="w-8 h-8 shrink-0 flex items-center justify-center rounded-xl border border-[var(--border)] hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-foreground/60 hover:text-foreground"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Legend */}
@@ -1335,7 +1664,8 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
                       <button key={t} type="button"
                         onClick={() => setRecurringForm(f => ({
                           ...f, type: t,
-                          category: t === 'income' ? 'Lương & Thưởng' : t === 'saving' ? 'Bỏ heo/Tiết kiệm tự do' : 'Chi tiêu khác'
+                          category: t === 'income' ? 'Lương & Thưởng' : t === 'saving' ? (savingAssets[0]?.name || 'Bỏ heo') : 'Chi tiêu khác',
+                          asset_id: t === 'saving' ? (savingAssets[0]?.id || '') : ''
                         }))}
                         className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${recurringForm.type === t ? 'bg-white dark:bg-slate-700 shadow-sm ' + (t === 'income' ? 'text-emerald-600' : t === 'saving' ? 'text-indigo-600' : 'text-rose-600') : 'text-foreground/50'}`}
                       >
@@ -1367,19 +1697,45 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
                         className="w-full text-sm font-semibold bg-background border border-[var(--border)] rounded-xl px-3 py-2.5 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/30 transition-all"
                       />
                     </div>
-                    {/* Category */}
-                    <div>
-                      <label className="text-[11px] font-bold text-foreground/50 uppercase tracking-wider mb-1 block">Danh mục</label>
-                      <select
-                        value={recurringForm.category}
-                        onChange={e => setRecurringForm(f => ({ ...f, category: e.target.value }))}
-                        className="w-full text-sm bg-background border border-[var(--border)] rounded-xl px-3 py-2.5 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/30 transition-all appearance-none"
-                      >
-                        {(recurringForm.type === 'expense' ? EXPENSE_CATEGORIES : recurringForm.type === 'income' ? INCOME_CATEGORIES : SAVING_CATEGORIES).map(c => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                      </select>
-                    </div>
+                    {/* Category / Asset */}
+                    {recurringForm.type === 'saving' ? (
+                      <div>
+                        <label className="text-[11px] font-bold text-foreground/50 uppercase tracking-wider mb-1 block">Gửi vào mục tiêu / Heo đất</label>
+                        {savingAssets.length > 0 ? (
+                          <select
+                            value={recurringForm.asset_id || savingAssets[0]?.id}
+                            onChange={e => {
+                              const selected = savingAssets.find(a => a.id === e.target.value);
+                              setRecurringForm(f => ({ ...f, asset_id: e.target.value, category: selected?.name || 'Bỏ heo' }))
+                            }}
+                            className="w-full text-sm bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl px-3 py-2.5 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/30 transition-all appearance-none font-bold"
+                          >
+                            {savingAssets.map(asset => (
+                              <option key={asset.id} value={asset.id}>
+                                {asset.name} (Số dư: {new Intl.NumberFormat('vi-VN').format(Number(asset.value))}đ)
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="w-full text-[13px] bg-rose-50 text-rose-600 border border-rose-200 rounded-xl px-3 py-2.5 font-medium">
+                            Chưa có mục tiêu. Hãy tạo trong phần Tài sản trước.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="text-[11px] font-bold text-foreground/50 uppercase tracking-wider mb-1 block">Danh mục</label>
+                        <select
+                          value={recurringForm.category}
+                          onChange={e => setRecurringForm(f => ({ ...f, category: e.target.value }))}
+                          className="w-full text-sm bg-background border border-[var(--border)] rounded-xl px-3 py-2.5 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/30 transition-all appearance-none"
+                        >
+                          {(recurringForm.type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     {/* Frequency */}
                     <div>
                       <label className="text-[11px] font-bold text-foreground/50 uppercase tracking-wider mb-1 block">Chu kỳ</label>
@@ -1457,10 +1813,9 @@ export function FinanceClient({ initialBalanceInfo, initialTransactions, initial
                               {/* Toggle switch */}
                               <button
                                 onClick={() => handleRecurringToggle(r.id, r.is_active)}
-                                className={`w-10 h-5.5 relative rounded-full transition-colors ${r.is_active ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'}`}
-                                style={{ height: '22px' }}
+                                className={`w-9 h-5 relative rounded-full transition-colors flex items-center px-0.5 ${r.is_active ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'}`}
                               >
-                                <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${r.is_active ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                                <span className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${r.is_active ? 'translate-x-4' : 'translate-x-0'}`} />
                               </button>
                               <button onClick={() => handleRecurringDelete(r.id)} className="p-1.5 text-foreground/40 hover:text-rose-500 transition-colors">
                                 <Trash2 className="w-3.5 h-3.5" />

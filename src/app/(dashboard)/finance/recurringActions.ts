@@ -20,6 +20,7 @@ export interface RecurringTransaction {
   last_applied_date: string | null;
   is_active: boolean;
   created_at: string;
+  asset_id: string | null;
 }
 
 // ─── READ ────────────────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ export async function createRecurringTransaction(payload: {
   frequency: 'daily' | 'weekly' | 'monthly';
   day_of_month?: number;
   day_of_week?: number;
+  asset_id?: string | null;
 }) {
   const supabase = await createClient();
   const user = await getCachedUser();
@@ -69,6 +71,7 @@ export async function createRecurringTransaction(payload: {
     day_of_week: payload.day_of_week ?? null,
     is_active: true,
     last_applied_date: null,
+    asset_id: payload.asset_id ?? null,
   });
 
   if (error) throw new Error('Không thể tạo khoản định kỳ: ' + error.message);
@@ -139,6 +142,7 @@ export async function applyDueRecurringTransactions(): Promise<number> {
     category: string;
     type: string;
     date: string;
+    asset_id: string | null;
   }> = [];
 
   const toUpdateIds: string[] = [];
@@ -165,8 +169,13 @@ export async function applyDueRecurringTransactions(): Promise<number> {
         category: rule.category,
         type: rule.type,
         date: todayStr,
+        asset_id: rule.asset_id,
       });
       toUpdateIds.push(rule.id);
+
+      if (rule.type === 'saving' && rule.asset_id) {
+        await supabase.rpc('increment_asset_value', { p_id: rule.asset_id, p_amount: rule.amount });
+      }
     }
   }
 

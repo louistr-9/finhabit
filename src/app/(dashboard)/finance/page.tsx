@@ -1,6 +1,7 @@
 import { FinanceClient } from './FinanceClient';
 import { getBalanceHubData, getMonthlyTransactions } from './actions';
 import { applyDueRecurringTransactions, getRecurringTransactions } from './recurringActions';
+import { createClient } from '@/utils/supabase/server';
 
 export const metadata = {
   title: 'Tài chính | FinHabit',
@@ -20,6 +21,21 @@ export default async function FinancePage() {
     getMonthlyTransactions(year, month),
     getRecurringTransactions(),
   ]);
+  
+  // Fetch saving assets for the dropdown
+  const supabase = await createClient();
+  const { data: user } = await supabase.auth.getUser();
+  let savingAssets: any[] = [];
+  
+  if (user.user) {
+    const { data } = await supabase
+      .from('assets')
+      .select('id, name, value')
+      .eq('user_id', user.user.id)
+      .eq('type', 'saving')
+      .order('created_at', { ascending: false });
+    savingAssets = data || [];
+  }
 
   return (
     <FinanceClient 
@@ -28,6 +44,7 @@ export default async function FinancePage() {
       initialYear={year}
       initialMonth={month}
       initialRecurring={recurringList}
+      savingAssets={savingAssets}
     />
   );
 }

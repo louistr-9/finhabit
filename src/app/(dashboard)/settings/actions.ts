@@ -14,17 +14,23 @@ export async function updateProfile(formData: FormData) {
   const fullName = formData.get('full_name') as string;
   const avatarUrl = formData.get('avatar_url') as string;
   const initialBalanceStr = formData.get('initial_balance') as string;
-  const initialBalance = Number(initialBalanceStr.replace(/\D/g, '')) || 0;
   const monthlyBudgetStr = formData.get('monthly_budget') as string;
-  const monthlyBudget = Number(monthlyBudgetStr?.replace(/\D/g, '')) || 0;
+
+  const updateData: any = {};
+  
+  if (fullName !== null) updateData.full_name = fullName.trim();
+  if (avatarUrl !== null) updateData.avatar_url = avatarUrl.trim() || null;
+  
+  if (initialBalanceStr !== null) {
+    updateData.initial_balance = Number(initialBalanceStr.replace(/\D/g, '')) || 0;
+  }
+  
+  if (monthlyBudgetStr !== null) {
+    updateData.monthly_budget = Number(monthlyBudgetStr?.replace(/\D/g, '')) || 0;
+  }
 
   const { error } = await supabase.auth.updateUser({
-    data: {
-      full_name: fullName.trim(),
-      avatar_url: avatarUrl.trim() || null,
-      initial_balance: initialBalance,
-      monthly_budget: monthlyBudget,
-    }
+    data: updateData
   });
 
   if (error) {
