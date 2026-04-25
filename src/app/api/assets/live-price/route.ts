@@ -13,9 +13,10 @@ export async function GET(request: Request) {
     let price = 0;
 
     if (type === 'crypto') {
+      const safeSymbol = symbol || '';
       // Fetch from Binance
       // Make sure the symbol ends with USDT if the user just inputs BTC
-      const fetchSymbol = symbol.endsWith('USDT') ? symbol : `${symbol}USDT`;
+      const fetchSymbol = safeSymbol.endsWith('USDT') ? safeSymbol : `${safeSymbol}USDT`;
       const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${fetchSymbol}`, {
         next: { revalidate: 60 } // Cache for 60 seconds
       });
@@ -29,8 +30,9 @@ export async function GET(request: Request) {
       }
     } 
     else if (type === 'stock') {
+      const safeSymbol = symbol || '';
       // Fetch from VNDirect API
-      const res = await fetch(`https://finfo-api.vndirect.com.vn/v4/stock_prices?sort=date&q=code:${symbol}&size=1`, {
+      const res = await fetch(`https://finfo-api.vndirect.com.vn/v4/stock_prices?sort=date&q=code:${safeSymbol}&size=1`, {
         headers: {
           'User-Agent': 'Mozilla/5.0'
         },
@@ -45,11 +47,11 @@ export async function GET(request: Request) {
         price = parseFloat(rawPrice) * 1000;
       } else {
         // Mock fallback for presentation if API fails or changes
-        console.log(`Fallback for stock ${symbol} due to API failure/no data`);
+        console.log(`Fallback for stock ${safeSymbol} due to API failure/no data`);
         // Simple hash to generate a consistent dummy price based on string
         let hash = 0;
-        for (let i = 0; i < symbol.length; i++) {
-          hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
+        for (let i = 0; i < safeSymbol.length; i++) {
+          hash = safeSymbol.charCodeAt(i) + ((hash << 5) - hash);
         }
         price = Math.abs((hash % 100) + 10) * 1000;
       }

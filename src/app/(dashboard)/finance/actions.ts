@@ -242,7 +242,7 @@ export async function updateTransaction(id: string, formData: FormData) {
 export async function getBalanceHubData() {
   const supabase = await createClient();
   const user = await getCachedUser();
-  if (!user) return { balance: 0, monthlyIncome: 0, monthlySpent: 0, totalSavings: 0 };
+  if (!user) return { balance: 0, monthlyIncome: 0, monthlySpent: 0, totalSavings: 0, initialBalance: 0, monthlyBudget: 0 };
 
   const { data: allTx, error: allErr } = await supabase
     .from('transactions')
@@ -251,7 +251,7 @@ export async function getBalanceHubData() {
 
   if (allErr) {
     console.error('Error fetching balance:', allErr.message);
-    return { balance: 0, monthlyIncome: 0 };
+    return { balance: 0, monthlyIncome: 0, monthlySpent: 0, totalSavings: 0, initialBalance: 0, monthlyBudget: 0 };
   }
 
   const today = getVNTime();
