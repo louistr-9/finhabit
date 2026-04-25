@@ -50,10 +50,11 @@ export async function addTransaction(formData: FormData) {
 
   let category = categoryInput;
   let title = titleInput?.trim();
+  const assetId = formData.get('asset_id') as string | null;
 
   if (!title) {
     if (type === 'income') category = 'Quà tặng & Thu nhập khác';
-    else if (type === 'saving') category = 'Bỏ heo/Tiết kiệm tự do';
+    else if (type === 'saving') category = 'Gửi vào mục tiêu';
     else category = 'Chi tiêu khác';
     title = category;
   }
@@ -61,10 +62,53 @@ export async function addTransaction(formData: FormData) {
   if (!amount || !category || !type || !date) {
     throw new Error('Thiếu thông tin giao dịch quan trọng (Số tiền/Danh mục)');
   }
+  
+  if (type === 'saving' && !assetId) {
+    throw new Error('Vui lòng chọn mục tiêu tiết kiệm (Heo đất / Sổ tiết kiệm).');
+  }
+
+  // Double-entry logic for savings
+  if (type === 'saving' && assetId) {
+    // 1. Fetch current asset value
+    const { data: asset, error: assetErr } = await supabase
+      .from('assets')
+      .select('value, name')
+      .eq('id', assetId)
+      .single();
+      
+    if (assetErr || !asset) {
+      throw new Error('Không tìm thấy tài sản đích để chuyển tiền.');
+    }
+    
+    // Override category and title with asset name for clarity if it's default
+    category = asset.name;
+    if (title === 'Gửi vào mục tiêu') {
+      title = `Gửi vào: ${asset.name}`;
+    }
+
+    // 2. Update asset value
+    const { error: updateErr } = await supabase
+      .from('assets')
+      .update({ value: Number(asset.value) + amount })
+      .eq('id', assetId);
+      
+    if (updateErr) {
+      console.error('Error updating asset:', updateErr.message);
+      throw new Error('Không thể cập nhật số dư mục tiêu: ' + updateErr.message);
+    }
+  }
 
   const { error } = await supabase
     .from('transactions')
-    .insert({ user_id: user.id, title, amount, category, type, date });
+    .insert({ 
+      user_id: user.id, 
+      title, 
+      amount, 
+      category, 
+      type, 
+      date,
+      asset_id: assetId || null
+    });
 
   if (error) {
     console.error('Error adding transaction:', error.message);
@@ -72,6 +116,9 @@ export async function addTransaction(formData: FormData) {
   }
 
   revalidatePath('/finance');
+  if (type === 'saving') {
+    revalidatePath('/finance/assets');
+  }
 }
 
 export async function addTransactionsBatch(transactions: Array<{title: string, amount: number, category: string, type: 'income' | 'expense' | 'saving', date: string}>) {
@@ -230,6 +277,7 @@ export async function getBalanceHubData() {
     .lte('date', `${endDate}T23:59:59.999Z`);
 
   const initialBalance = Number(user.user_metadata?.initial_balance) || 0;
+  const monthlyBudget = Number(user.user_metadata?.monthly_budget) || 0;
   let balance = initialBalance;
   let totalSavings = 0;
   (allTx ?? []).forEach((t) => {
@@ -246,7 +294,7 @@ export async function getBalanceHubData() {
   const monthlyIncome = (monthIncomeTx ?? []).reduce((sum, t) => sum + t.amount, 0);
   const monthlySpent = (monthSpentTx ?? []).filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
-  return { balance, monthlyIncome, monthlySpent, totalSavings };
+  return { balance, monthlyIncome, monthlySpent, totalSavings, initialBalance, monthlyBudget };
 }
 
 export async function getWeeklyOverview() {

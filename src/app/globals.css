@@ -1,22 +1,25 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   /* Colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
-  
-  --color-emerald-teal: var(--emerald-teal);
-  --color-deep-violet: var(--deep-violet);
-  --color-slate-50: var(--slate-50);
-  
+
+  --color-emerald-teal: #0D9488;
+  --color-brand-indigo: #1e3a8a;
+  --color-brand-lime: #84cc16;
+  --color-deep-violet: #6D28D9;
+  --color-slate-50: #f8fafc;
+
   --color-border: var(--border);
 
   /* Fonts */
   --font-sans: 'Inter', sans-serif;
   --font-heading: 'Outfit', sans-serif;
-  
+
   /* Radii */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -25,17 +28,24 @@
 }
 
 :root {
-  --background: hsl(210, 40%, 98%); /* Trang chủ/Slate rất nhạt */
+  --background: hsl(210, 40%, 98%);
+  /* Trang chủ/Slate rất nhạt */
   --foreground: hsl(222, 47%, 11%);
-  
+
   --card: hsl(0, 0%, 100%);
   --card-foreground: hsl(222, 47%, 11%);
-  
+
   /* Brand Colors */
-  --emerald-teal: hsl(175, 84%, 32%); /* #0D9488 */
-  --deep-violet: hsl(263, 70%, 50%); /* #6D28D9 */
+  --emerald-teal: hsl(175, 84%, 32%);
+  /* #0D9488 */
+  --brand-indigo: #1e3a8a;
+  /* Blue 900-ish */
+  --brand-lime: #84cc16;
+  /* Lime 500 */
+  --deep-violet: hsl(263, 70%, 50%);
+  /* #6D28D9 */
   --slate-50: hsl(210, 40%, 98%);
-  
+
   --border: hsl(214, 32%, 91%);
   --radius: 1rem;
 }
@@ -50,14 +60,16 @@
 }
 
 .warm {
-  --background: hsl(40, 33%, 96%); /* Ấm áp, hơi vàng nhạt */
+  --background: hsl(40, 33%, 96%);
+  /* Ấm áp, hơi vàng nhạt */
   --foreground: hsl(30, 20%, 20%);
   --card: hsl(40, 50%, 98%);
   --card-foreground: hsl(30, 20%, 20%);
   --border: hsl(40, 20%, 85%);
   --slate-50: hsl(40, 40%, 94%);
-  --emerald-teal: hsl(150, 60%, 30%); /* Điều chỉnh brand cho hợp tông ấm */
-  --deep-violet: hsl(350, 50%, 45%); 
+  --emerald-teal: hsl(150, 60%, 30%);
+  /* Điều chỉnh brand cho hợp tông ấm */
+  --deep-violet: hsl(350, 50%, 45%);
 }
 
 body {
@@ -83,6 +95,7 @@ body {
 .shadow-soft {
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
 }
+
 .shadow-soft-hover:hover {
   box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.06), 0 4px 8px -4px rgba(0, 0, 0, 0.04);
 }
@@ -95,6 +108,7 @@ body {
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .hide-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

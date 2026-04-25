@@ -8,6 +8,10 @@ const outfit = Outfit({ subsets: ["latin"], variable: '--font-heading', display:
 export const metadata: Metadata = {
   title: "FinHabit - Manage Finance & Habits",
   description: "A professional web application for tracking finances and building habits.",
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  }
 };
 
 export default function RootLayout({

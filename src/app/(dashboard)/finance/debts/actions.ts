@@ -99,6 +99,61 @@ export async function addDebt(data: {
   return { success: true, debt: newDebt };
 }
 
+export async function updateDebt(id: string, data: {
+  type: DebtType;
+  contact_name: string;
+  amount: number;
+  date: string;
+  due_date?: string | null;
+  notes?: string | null;
+  group_name?: string | null;
+}) {
+  const supabase = await createClient();
+  const { data: user } = await supabase.auth.getUser();
+  if (!user.user) throw new Error('Not authenticated');
+
+  const { error } = await supabase
+    .from('debts')
+    .update({
+      type: data.type,
+      contact_name: data.contact_name,
+      amount: data.amount,
+      date: data.date,
+      due_date: data.due_date || null,
+      notes: data.notes || null,
+      group_name: data.group_name || null,
+    })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error updating debt:', error);
+    return { success: false, error: error.message };
+  }
+
+  // Find and update the initial transaction if it exists
+  const txType = data.type === 'lent' ? 'expense' : 'income';
+  const txCategory = data.type === 'lent' ? 'Cho vay' : 'Đi vay';
+  const txTitle = `${txCategory} - ${data.contact_name}`;
+  
+  await supabase
+    .from('transactions')
+    .update({
+      title: txTitle,
+      amount: data.amount,
+      category: txCategory,
+      type: txType,
+      date: data.date,
+    })
+    .eq('debt_id', id)
+    .in('category', ['Cho vay', 'Đi vay']);
+
+  revalidatePath('/finance/debts');
+  revalidatePath('/finance');
+  revalidatePath('/dashboard');
+  
+  return { success: true };
+}
+
 export async function updateDebtPayment(id: string, paymentAmount: number, paymentDate: string) {
   const supabase = await createClient();
   const { data: user } = await supabase.auth.getUser();

@@ -2,10 +2,10 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Debt } from './actions';
-import { addDebt, updateDebtPayment, deleteDebt } from './actions';
+import { addDebt, updateDebtPayment, deleteDebt, updateDebt } from './actions';
 import { 
   Plus, Search, MoreHorizontal, User, Calendar, FileText, 
-  Wallet, TrendingUp, Handshake, CheckCircle2, X
+  Wallet, TrendingUp, Handshake, CheckCircle2, X, Pencil, Trash2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -18,6 +18,16 @@ function formatCurrency(amount: number) {
   return new Intl.NumberFormat('vi-VN').format(amount) + ' đ';
 }
 
+function formatMoneyInput(value: string): string {
+  const num = value.replace(/[^0-9]/g, '');
+  if (!num) return '';
+  return new Intl.NumberFormat('vi-VN').format(Number(num));
+}
+
+function parseMoneyInput(formatted: string): string {
+  return formatted.replace(/[^0-9]/g, '');
+}
+
 function calculateProgress(paid: number, total: number) {
   if (total === 0) return 0;
   return Math.min(Math.round((paid / total) * 100), 100);
@@ -25,13 +35,15 @@ function calculateProgress(paid: number, total: number) {
 
 export default function DebtsClient({ initialDebts }: DebtsClientProps) {
   const [debts, setDebts] = useState<Debt[]>(initialDebts);
-  const [activeTab, setActiveTab] = useState<'lent' | 'borrowed'>('lent');
+  const [activeTab, setActiveTab] = useState<'all' | 'lent' | 'borrowed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed'>('all');
   
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState<Debt | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // Form states
   const [addForm, setAddForm] = useState({
@@ -59,7 +71,7 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
   const activeDebtsBorrowedCount = borrowedDebts.filter(d => d.status === 'active').length;
 
   const displayedList = useMemo(() => {
-    let list = activeTab === 'lent' ? lentDebts : borrowedDebts;
+    let list = activeTab === 'all' ? debts : activeTab === 'lent' ? lentDebts : borrowedDebts;
     
     if (statusFilter !== 'all') {
       list = list.filter(d => d.status === statusFilter);
@@ -71,38 +83,81 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
     }
     
     return list;
-  }, [activeTab, lentDebts, borrowedDebts, statusFilter, searchTerm]);
+  }, [activeTab, debts, lentDebts, borrowedDebts, statusFilter, searchTerm]);
 
   // Handlers
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addForm.contact_name || !addForm.amount) return;
-
+    
     setIsSubmitting(true);
     try {
-      const res = await addDebt({
+      const data = {
         ...addForm,
-        amount: Number(addForm.amount.replace(/[^0-9]/g, '')),
-        due_date: addForm.due_date || null,
-      });
-
-      if (res.success && res.debt) {
-        setDebts(prev => [res.debt, ...prev]);
-        setShowAddModal(false);
-        setAddForm({
-          type: 'lent',
-          contact_name: '',
-          amount: '',
-          date: new Date().toISOString().split('T')[0],
-          due_date: '',
-          notes: '',
-          group_name: 'Bạn bè',
-        });
+        amount: Number(parseMoneyInput(addForm.amount))
+      };
+      
+      if (editingId) {
+        const res = await updateDebt(editingId, data);
+        if (res.success) {
+          setDebts(prev => prev.map(d => d.id === editingId ? { ...d, ...data } : d));
+          setShowAddModal(false);
+          setEditingId(null);
+          setAddForm({
+            type: activeTab === 'all' ? 'lent' : activeTab,
+            contact_name: '',
+            amount: '',
+            date: new Date().toISOString().split('T')[0],
+            due_date: '',
+            notes: '',
+            group_name: 'Bạn bè',
+          });
+        }
+      } else {
+        const res = await addDebt(data);
+        if (res.success && res.debt) {
+          setDebts(prev => [res.debt as Debt, ...prev]);
+          setShowAddModal(false);
+          setAddForm({
+            type: activeTab === 'all' ? 'lent' : activeTab,
+            contact_name: '',
+            amount: '',
+            date: new Date().toISOString().split('T')[0],
+            due_date: '',
+            notes: '',
+            group_name: 'Bạn bè',
+          });
+        }
       }
     } catch (error) {
       console.error(error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleEditClick = (debt: Debt) => {
+    setOpenMenuId(null);
+    setEditingId(debt.id);
+    setAddForm({
+      type: debt.type,
+      contact_name: debt.contact_name,
+      amount: debt.amount.toString(),
+      date: debt.date,
+      due_date: debt.due_date || '',
+      notes: debt.notes || '',
+      group_name: debt.group_name || '',
+    });
+    setShowAddModal(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    setOpenMenuId(null);
+    if (confirm('Bạn có chắc chắn muốn xóa khoản này? Hành động này không thể hoàn tác.')) {
+      const res = await deleteDebt(id);
+      if (res.success) {
+        setDebts(prev => prev.filter(d => d.id !== id));
+      }
     }
   };
 
@@ -151,7 +206,7 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
             Lịch sử tất cả
           </button>
           <button 
-            onClick={() => { setAddForm(prev => ({...prev, type: activeTab})); setShowAddModal(true); }}
+            onClick={() => { setAddForm(prev => ({...prev, type: activeTab === 'all' ? 'lent' : activeTab})); setShowAddModal(true); }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 shadow-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -200,6 +255,15 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
         {/* Tabs & Filters */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                activeTab === 'all' ? "bg-white dark:bg-slate-700 text-foreground shadow-sm" : "text-foreground/60 hover:text-foreground"
+              )}
+            >
+              Tất cả ({debts.length})
+            </button>
             <button
               onClick={() => setActiveTab('lent')}
               className={cn(
@@ -255,7 +319,7 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
                 Bạn chưa có khoản {activeTab === 'lent' ? 'cho vay' : 'nợ'} nào. Nhấn Thêm mới để bắt đầu ghi chú.
               </p>
               <button 
-                onClick={() => { setAddForm(prev => ({...prev, type: activeTab})); setShowAddModal(true); }}
+                onClick={() => { setAddForm(prev => ({...prev, type: activeTab === 'all' ? 'lent' : activeTab})); setShowAddModal(true); }}
                 className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 shadow-sm transition-colors"
               >
                 + Thêm khoản đầu tiên
@@ -321,7 +385,7 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
                     </div>
                   </div>
 
-                  {/* Progress bar (Mobile absolute, Desktop inline) */}
+                  {/* Progress bar */}
                   <div className="md:w-32 flex flex-col justify-center shrink-0">
                      <div className="flex justify-between items-end mb-1 text-[11px] font-medium text-foreground/60">
                        <span>Tiến độ</span>
@@ -351,9 +415,42 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
                         Đã thanh toán
                       </div>
                     )}
-                    <button className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-foreground/40 transition-colors">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
+                    <div className="relative">
+                      <button 
+                        onClick={() => setOpenMenuId(openMenuId === debt.id ? null : debt.id)}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-foreground/40 transition-colors"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                      
+                      <AnimatePresence>
+                        {openMenuId === debt.id && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.95 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.95 }}
+                              transition={{ duration: 0.1 }}
+                              className="absolute right-0 top-full mt-1 w-36 bg-card rounded-xl shadow-lg border border-[var(--border)] py-1 z-50 overflow-hidden"
+                            >
+                              <button 
+                                onClick={() => handleEditClick(debt)}
+                                className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground/80 transition-colors"
+                              >
+                                <Pencil className="w-4 h-4" /> Chỉnh sửa
+                              </button>
+                              <button 
+                                onClick={() => handleDelete(debt.id)}
+                                className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-rose-600 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" /> Xóa khoản
+                              </button>
+                            </motion.div>
+                          </>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
                 </div>
               );
@@ -368,20 +465,25 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setShowAddModal(false)}
+              onClick={() => { setShowAddModal(false); setEditingId(null); }}
               className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative bg-card w-full max-w-md rounded-2xl shadow-xl overflow-hidden"
+              initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}
+              className="relative w-full max-w-lg bg-card rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="flex justify-between items-center p-4 border-b border-[var(--border)]">
-                <h3 className="font-semibold">Thêm khoản {addForm.type === 'lent' ? 'cho vay' : 'nợ'} mới</h3>
-                <button onClick={() => setShowAddModal(false)} className="p-1 text-foreground/50 hover:text-foreground bg-slate-100 dark:bg-slate-800 rounded-full transition-colors">
-                  <X className="w-4 h-4" />
+              <div className="flex items-center justify-between p-4 md:p-6 border-b border-[var(--border)] shrink-0">
+                <h3 className="text-xl font-heading font-bold text-foreground">
+                  {editingId ? 'Cập nhật khoản nợ' : 'Thêm khoản mới'}
+                </h3>
+                <button 
+                  onClick={() => { setShowAddModal(false); setEditingId(null); }}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <form onSubmit={handleAddSubmit} className="p-5 space-y-4">
+              <form onSubmit={handleAddSubmit} className="p-5 overflow-y-auto space-y-4">
                 <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mb-2">
                   <button type="button" onClick={() => setAddForm(prev => ({...prev, type: 'lent'}))} className={cn("flex-1 py-2 text-sm font-medium rounded-lg transition-all", addForm.type === 'lent' ? "bg-white dark:bg-slate-700 shadow text-indigo-600" : "text-foreground/60")}>Cho vay</button>
                   <button type="button" onClick={() => setAddForm(prev => ({...prev, type: 'borrowed'}))} className={cn("flex-1 py-2 text-sm font-medium rounded-lg transition-all", addForm.type === 'borrowed' ? "bg-white dark:bg-slate-700 shadow text-rose-600" : "text-foreground/60")}>Tôi nợ</button>
@@ -395,7 +497,7 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
                 <div>
                   <label className="block text-xs font-medium text-foreground/70 mb-1">Số tiền <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <input required value={addForm.amount} onChange={e => setAddForm({...addForm, amount: e.target.value})} type="number" className="w-full px-3 py-2 pr-8 bg-background border border-[var(--border)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" placeholder="2000000" />
+                    <input required value={addForm.amount} onChange={e => setAddForm({...addForm, amount: formatMoneyInput(e.target.value)})} type="text" inputMode="numeric" className="w-full px-3 py-2 pr-8 bg-background border border-[var(--border)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" placeholder="2.000.000" />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 font-medium">đ</span>
                   </div>
                 </div>
@@ -406,7 +508,7 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
                     <input required type="date" value={addForm.date} onChange={e => setAddForm({...addForm, date: e.target.value})} className="w-full px-3 py-2 bg-background border border-[var(--border)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-foreground/70 mb-1">Hạn trả <span className="text-foreground/40 font-normal">(không bắt buộc)</span></label>
+                    <label className="block text-xs font-medium text-foreground/70 mb-1">Hạn trả</label>
                     <input type="date" value={addForm.due_date} onChange={e => setAddForm({...addForm, due_date: e.target.value})} className="w-full px-3 py-2 bg-background border border-[var(--border)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
                   </div>
                 </div>
@@ -427,9 +529,12 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
                   <input value={addForm.notes} onChange={e => setAddForm({...addForm, notes: e.target.value})} className="w-full px-3 py-2 bg-background border border-[var(--border)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" placeholder="Mục đích..." />
                 </div>
 
-                <div className="pt-2">
-                  <button disabled={isSubmitting} type="submit" className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50">
-                    {isSubmitting ? 'Đang lưu...' : 'Lưu khoản ' + (addForm.type === 'lent' ? 'cho vay' : 'nợ')}
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => { setShowAddModal(false); setEditingId(null); }} className="flex-1 py-3 px-4 rounded-xl border border-[var(--border)] text-foreground font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                    Hủy bỏ
+                  </button>
+                  <button type="submit" disabled={isSubmitting} className="flex-1 py-3 px-4 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                    {isSubmitting ? 'Đang lưu...' : (editingId ? 'Cập nhật' : 'Thêm mới')}
                   </button>
                 </div>
               </form>
@@ -470,11 +575,11 @@ export default function DebtsClient({ initialDebts }: DebtsClientProps) {
                 <div>
                   <label className="block text-xs font-medium text-foreground/70 mb-1">Số tiền thanh toán <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <input required autoFocus value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} type="number" className="w-full px-3 py-2 pr-8 bg-background border border-[var(--border)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" placeholder="Nhập số tiền..." />
+                    <input required autoFocus value={paymentAmount} onChange={e => setPaymentAmount(formatMoneyInput(e.target.value))} type="text" inputMode="numeric" className="w-full px-3 py-2 pr-8 bg-background border border-[var(--border)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" placeholder="Nhập số tiền..." />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 font-medium">đ</span>
                   </div>
                   <div className="flex gap-2 mt-2">
-                     <button type="button" onClick={() => setPaymentAmount((showPaymentModal.amount - showPaymentModal.paid_amount).toString())} className="text-[10px] px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-foreground/70 hover:bg-slate-200 transition-colors">Thanh toán toàn bộ</button>
+                     <button type="button" onClick={() => setPaymentAmount(formatMoneyInput((showPaymentModal.amount - showPaymentModal.paid_amount).toString()))} className="text-[10px] px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-foreground/70 hover:bg-slate-200 transition-colors">Thanh toán toàn bộ</button>
                   </div>
                 </div>
 

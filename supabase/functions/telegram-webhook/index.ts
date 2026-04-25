@@ -6,7 +6,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
+const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY")!;
 const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
 const OWNER_USER_ID = Deno.env.get("FINHABIT_USER_ID")!;
 
@@ -114,16 +114,25 @@ unknown: {"type":"unknown","message":"Xin lỗi, mình chưa hiểu 😅"}
 
 Câu nói: "${input}"`;
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } }),
+  const res = await fetch(`https://api.groq.com/openai/v1/chat/completions`, {
+    method: "POST", 
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${GROQ_API_KEY}`
+    },
+    body: JSON.stringify({ 
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: "Bạn là Robot FinHabit. Luôn phản hồi bằng JSON thuần." },
+        { role: "user", content: prompt }
+      ],
+      response_format: { type: "json_object" }
+    }),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  const m = text.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error("No JSON");
-  return JSON.parse(m[0]);
+  const text = data?.choices?.[0]?.message?.content || "";
+  return JSON.parse(text);
 }
 
 async function execute(sb: Supabase, userId: string, result: Record<string, unknown>): Promise<string> {
