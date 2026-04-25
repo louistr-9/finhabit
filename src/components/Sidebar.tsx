@@ -13,9 +13,22 @@ import { cn } from '@/lib/utils';
 import { logout } from '@/app/(auth)/login/actions';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 
-const navItems = [
+type NavItem = {
+  label: string;
+  icon: any;
+  href?: string;
+  subItems?: { label: string; href: string }[];
+};
+
+const navItems: NavItem[] = [
   { label: 'Tổng quan', icon: LayoutDashboard, href: '/dashboard' },
-  { label: 'Tài chính', icon: Wallet, href: '/finance' },
+  { 
+    label: 'Tài chính', icon: Wallet, 
+    subItems: [
+      { label: 'Dòng tiền', href: '/finance' },
+      { label: 'Nợ & Cho vay', href: '/finance/debts' },
+    ]
+  },
   { label: 'Thói quen', icon: CheckSquare, href: '/habit' },
   { label: 'Báo cáo', icon: BarChart3, href: '/report' },
 ];
@@ -97,6 +110,83 @@ function ThemeDropdown({ theme, setTheme }: { theme: string; setTheme: (val: str
   );
 }
 
+// SubMenuItem for rendering child links
+function SubMenuItem({ 
+  item, 
+  pathname, 
+  onNavClick 
+}: { 
+  item: NavItem; 
+  pathname: string; 
+  onNavClick?: () => void 
+}) {
+  const isFinanceRoute = pathname.startsWith('/finance');
+  const [expanded, setExpanded] = useState(isFinanceRoute);
+  
+  const isActiveGroup = item.subItems?.some(sub => pathname === sub.href) || isFinanceRoute;
+
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className={cn(
+          'w-full group flex items-center justify-between rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200',
+          isActiveGroup && !expanded
+            ? 'bg-slate-50 text-emerald-teal shadow-soft'
+            : 'text-foreground/70 hover:bg-slate-50 hover:text-emerald-teal'
+        )}
+      >
+        <div className="flex items-center gap-3">
+          <item.icon
+            strokeWidth={1.5}
+            className={cn(
+              'h-5 w-5 transition-transform duration-200 group-hover:scale-110',
+              isActiveGroup && !expanded ? 'text-emerald-teal' : 'text-foreground/50'
+            )}
+          />
+          <span>{item.label}</span>
+        </div>
+        <ChevronDown 
+          className={cn("w-4 h-4 transition-transform duration-200", expanded && "rotate-180")} 
+        />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col gap-1 pl-11 pr-2 pb-1">
+              {item.subItems?.map(sub => {
+                const isSubActive = pathname === sub.href;
+                return (
+                  <Link
+                    key={sub.href}
+                    href={sub.href}
+                    onClick={onNavClick}
+                    className={cn(
+                      'block px-3 py-2 text-sm font-medium rounded-md transition-colors',
+                      isSubActive 
+                        ? 'text-emerald-teal bg-emerald-teal/10' 
+                        : 'text-foreground/60 hover:text-foreground hover:bg-slate-50'
+                    )}
+                  >
+                    {sub.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // Sidebar content — dùng chung cho cả Desktop và Mobile Drawer
 function SidebarContent({
   displayName, avatarUrl, email, pathname, onNavClick
@@ -145,13 +235,17 @@ function SidebarContent({
       {/* Navigation */}
       <nav className="space-y-2 flex-1 overflow-y-auto py-2 pr-2 scrollbar-hide">
         {navItems.map((item) => {
+          if (item.subItems) {
+             return <SubMenuItem key={item.label} item={item} pathname={pathname} onNavClick={onNavClick} />;
+          }
+
           const isActive = pathname === item.href;
           const Icon = item.icon;
 
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={item.href!}
               onClick={onNavClick}
               className={cn(
                 'group flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200',
