@@ -123,7 +123,8 @@ export async function applyDueRecurringTransactions(): Promise<number> {
   if (!user) return 0;
 
   const todayStr = getVNTime(); // YYYY-MM-DD
-  const today = new Date(todayStr);
+  const [y, m, d] = todayStr.split('-');
+  const today = new Date(Number(y), Number(m) - 1, Number(d));
   const dayOfMonth = today.getDate();          // 1-31
   const dayOfWeek = today.getDay();            // 0 (Sun) – 6 (Sat)
 

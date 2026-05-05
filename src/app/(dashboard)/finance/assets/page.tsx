@@ -20,6 +20,7 @@ export default async function AssetsPage() {
   const { data, error } = await supabase
     .from('assets')
     .select('*')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
   if (error) {

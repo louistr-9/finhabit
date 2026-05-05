@@ -16,6 +16,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 export async function getMonthlyTransactions(year: number, month: number) {
   const supabase = await createClient();
 
+  const user = await getCachedUser();
+  if (!user) return [];
+
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
@@ -23,6 +26,7 @@ export async function getMonthlyTransactions(year: number, month: number) {
   const { data: transactions, error } = await supabase
     .from('transactions')
     .select('*')
+    .eq('user_id', user.id)
     .gte('date', startDate)
     .lte('date', endDate)
     .order('created_at', { ascending: false });
@@ -244,55 +248,28 @@ export async function getBalanceHubData() {
   const user = await getCachedUser();
   if (!user) return { balance: 0, monthlyIncome: 0, monthlySpent: 0, totalSavings: 0, initialBalance: 0, monthlyBudget: 0 };
 
-  const { data: allTx, error: allErr } = await supabase
-    .from('transactions')
-    .select('amount, type')
-    .eq('user_id', user.id);
-
-  if (allErr) {
-    console.error('Error fetching balance:', allErr.message);
-    return { balance: 0, monthlyIncome: 0, monthlySpent: 0, totalSavings: 0, initialBalance: 0, monthlyBudget: 0 };
-  }
-
   const today = getVNTime();
   const [year, month] = today.split('-').map(Number);
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  const { data: monthIncomeTx } = await supabase
-    .from('transactions')
-    .select('amount')
-    .eq('user_id', user.id)
-    .eq('type', 'income')
-    .gte('date', startDate)
-    .lte('date', `${endDate}T23:59:59.999Z`);
-
-  const { data: monthSpentTx } = await supabase
-    .from('transactions')
-    .select('amount, type')
-    .eq('user_id', user.id)
-    .in('type', ['expense', 'saving'])
-    .gte('date', startDate)
-    .lte('date', `${endDate}T23:59:59.999Z`);
+  const [
+    { data: overview },
+    { data: monthlySummary }
+  ] = await Promise.all([
+    supabase.from('user_financial_overview').select('*').eq('user_id', user.id).single(),
+    supabase.from('monthly_transaction_summary').select('*').eq('user_id', user.id).eq('year', year).eq('month', month).single()
+  ]);
 
   const initialBalance = Number(user.user_metadata?.initial_balance) || 0;
   const monthlyBudget = Number(user.user_metadata?.monthly_budget) || 0;
-  let balance = initialBalance;
-  let totalSavings = 0;
-  (allTx ?? []).forEach((t) => {
-    if (t.type === 'income') {
-      balance += t.amount;
-    } else {
-      balance -= t.amount;
-      if (t.type === 'saving') {
-        totalSavings += t.amount;
-      }
-    }
-  });
-
-  const monthlyIncome = (monthIncomeTx ?? []).reduce((sum, t) => sum + t.amount, 0);
-  const monthlySpent = (monthSpentTx ?? []).filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  
+  const totalIncome = Number(overview?.total_income) || 0;
+  const totalExpense = Number(overview?.total_expense) || 0;
+  const totalSavings = Number(overview?.total_savings) || 0;
+  
+  const balance = initialBalance + totalIncome - totalExpense - totalSavings;
+  
+  const monthlyIncome = Number(monthlySummary?.monthly_income) || 0;
+  const monthlySpent = Number(monthlySummary?.monthly_expense) || 0;
 
   return { balance, monthlyIncome, monthlySpent, totalSavings, initialBalance, monthlyBudget };
 }
@@ -303,29 +280,24 @@ export async function getWeeklyOverview() {
   if (!user) return [];
 
   const todayStr = getVNTime();
-  const localToday = new Date();
-
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
   const startDate = getVNTime(sevenDaysAgo);
-  const endDate = todayStr;
 
-  const { data: transactions } = await supabase
-    .from('transactions')
-    .select('amount, type, date')
+  const { data: dailySummary } = await supabase
+    .from('daily_transaction_summary')
+    .select('*')
     .eq('user_id', user.id)
-    .gte('date', startDate)
-    .lte('date', `${endDate}T23:59:59.999Z`);
+    .gte('tx_date', startDate)
+    .lte('tx_date', todayStr);
 
   const txMap = new Map<string, { spend: number, income: number, saving: number }>();
-  (transactions ?? []).forEach(t => {
-    // Normalize date string to YYYY-MM-DD to handle ISO timestamps from database
-    const d = t.date.split('T')[0];
-    const existing = txMap.get(d) || { spend: 0, income: 0, saving: 0 };
-    if (t.type === 'expense') existing.spend += t.amount;
-    else if (t.type === 'saving') existing.saving += t.amount;
-    else existing.income += t.amount;
-    txMap.set(d, existing);
+  (dailySummary ?? []).forEach(d => {
+    txMap.set(d.tx_date, {
+      spend: Number(d.daily_expense) || 0,
+      income: Number(d.daily_income) || 0,
+      saving: Number(d.daily_saving) || 0
+    });
   });
 
   const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
