@@ -32,18 +32,26 @@ export async function getDashboardOverview() {
   const doneHabitsCount = habits.filter(h => h.done).length;
   const totalHabits = habits.length;
 
-  // 2. Fetch transactions
-  const { data: transactions } = await supabase
-    .from('transactions')
-    .select('amount, type, date')
-    .order('date', { ascending: true });
+  // 2. Fetch financial overview from SQL Views
+  const [
+    { data: overview },
+    { data: monthlySummary },
+    { data: dailySummary }
+  ] = await Promise.all([
+    supabase.from('user_financial_overview').select('*').eq('user_id', user.id).single(),
+    supabase.from('monthly_transaction_summary').select('*').eq('user_id', user.id).eq('year', year).eq('month', month).single(),
+    supabase.from('daily_transaction_summary').select('*').eq('user_id', user.id).order('tx_date', { ascending: false }).limit(7)
+  ]);
 
-  // Lấy số dư ban đầu từ user metadata
   const initialBalance = Number(user.user_metadata?.initial_balance) || 0;
-
-  let balance = initialBalance;
-  let monthlySpent = 0;
-  let totalSavings = 0;
+  
+  const totalIncome = Number(overview?.total_income) || 0;
+  const totalExpense = Number(overview?.total_expense) || 0;
+  const totalSavings = Number(overview?.total_savings) || 0;
+  
+  // Balance calculation: initial + income - expense - savings
+  const balance = initialBalance + totalIncome - totalExpense - totalSavings;
+  const monthlySpent = Number(monthlySummary?.monthly_expense) || 0;
 
   // For Chart (Last 7 days)
   const last7DaysMap = new Map<string, { income: number; spend: number; saving: number }>();
@@ -54,39 +62,22 @@ export async function getDashboardOverview() {
     last7DaysMap.set(dateKey, { income: 0, spend: 0, saving: 0 });
   }
 
-
-  if (transactions) {
-    transactions.forEach(t => {
-      // Balance
-      if (t.type === 'income') {
-        balance += t.amount;
-      } else {
-        balance -= t.amount;
-        if (t.type === 'saving') {
-          totalSavings += t.amount;
-        }
-      }
-
-      // Monthly Spent
-      const [y, m] = t.date.split('-');
-      if (parseInt(y) === year && parseInt(m) === month && t.type === 'expense') {
-        monthlySpent += t.amount;
-      }
-
-      // Chart Data
-      if (last7DaysMap.has(t.date)) {
-        const current = last7DaysMap.get(t.date)!;
-        if (t.type === 'income') current.income += t.amount;
-        else if (t.type === 'saving') current.saving += t.amount;
-        else current.spend += t.amount;
-        last7DaysMap.set(t.date, current);
+  if (dailySummary) {
+    dailySummary.forEach(d => {
+      if (last7DaysMap.has(d.tx_date)) {
+        last7DaysMap.set(d.tx_date, {
+          income: Number(d.daily_income) || 0,
+          spend: Number(d.daily_expense) || 0,
+          saving: Number(d.daily_saving) || 0
+        });
       }
     });
   }
 
   const chartData = Array.from(last7DaysMap.entries()).map(([dateStr, values]) => {
     // Convert 'YYYY-MM-DD' to short string like 'T2', 'T3', or just '15/4'
-    const d = new Date(dateStr);
+    const [y, m, day] = dateStr.split('-');
+    const d = new Date(Number(y), Number(m) - 1, Number(day));
     const dayName = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][d.getDay()];
     return {
       name: dayName,

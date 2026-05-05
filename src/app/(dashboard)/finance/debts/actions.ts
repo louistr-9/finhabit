@@ -23,9 +23,13 @@ export interface Debt {
 
 export async function getDebts() {
   const supabase = await createClient();
+  const { data: user } = await supabase.auth.getUser();
+  if (!user.user) return [];
+
   const { data, error } = await supabase
     .from('debts')
     .select('*')
+    .eq('user_id', user.user.id)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -123,7 +127,8 @@ export async function updateDebt(id: string, data: {
       notes: data.notes || null,
       group_name: data.group_name || null,
     })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('user_id', user.user.id);
 
   if (error) {
     console.error('Error updating debt:', error);
@@ -164,6 +169,7 @@ export async function updateDebtPayment(id: string, paymentAmount: number, payme
     .from('debts')
     .select('*')
     .eq('id', id)
+    .eq('user_id', user.user.id)
     .single();
 
   if (fetchError || !debt) {
@@ -213,10 +219,14 @@ export async function updateDebtPayment(id: string, paymentAmount: number, payme
 
 export async function deleteDebt(id: string) {
   const supabase = await createClient();
+  const { data: user } = await supabase.auth.getUser();
+  if (!user.user) throw new Error('Not authenticated');
+
   const { error } = await supabase
     .from('debts')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('user_id', user.user.id);
 
   if (error) {
     console.error('Error deleting debt:', error);

@@ -86,11 +86,14 @@ export async function addAsset(data: {
 
 export async function deleteAsset(id: string) {
   const supabase = await createClient();
+  const { data: user } = await supabase.auth.getUser();
+  if (!user.user) throw new Error('Not authenticated');
   
   const { error } = await supabase
     .from('assets')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('user_id', user.user.id);
     
   if (error) {
     console.error('Error deleting asset:', error);

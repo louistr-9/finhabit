@@ -11,7 +11,16 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
-import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, Tooltip as RechartsTooltip } from 'recharts';
+import dynamic from 'next/dynamic';
+
+const AssetPieChart = dynamic(() => import('./AssetPieChart'), { 
+  ssr: false, 
+  loading: () => <div className="w-full h-full rounded-full border-8 border-slate-100 dark:border-slate-800 animate-pulse" /> 
+});
+const AssetLineChart = dynamic(() => import('./AssetLineChart'), { 
+  ssr: false, 
+  loading: () => <div className="w-full h-full bg-slate-100/50 dark:bg-slate-800/50 animate-pulse rounded" /> 
+});
 
 interface AssetsClientProps {
   initialAssets: Asset[];
@@ -59,11 +68,6 @@ export default function AssetsClient({ initialAssets, cashBalance }: AssetsClien
   const [assets, setAssets] = useState<Asset[]>(initialAssets);
   const [filterType, setFilterType] = useState<string>('all');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-
-  React.useEffect(() => {
-    setIsMounted(true);
-  }, []);
   
   // Form states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -314,30 +318,7 @@ export default function AssetsClient({ initialAssets, cashBalance }: AssetsClien
           
           <div className="mt-8 flex items-center gap-6">
             <div className="w-28 h-28 shrink-0 relative">
-              {!isMounted ? (
-                <div className="w-full h-full" />
-              ) : pieData.length > 0 ? (
-                // @ts-ignore
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      innerRadius={30}
-                      outerRadius={50}
-                      paddingAngle={2}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      {pieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip formatter={(val: any) => formatCurrency(Number(val))} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="w-full h-full rounded-full border-8 border-slate-100 dark:border-slate-800" />
-              )}
+              <AssetPieChart pieData={pieData} formatCurrency={formatCurrency} />
             </div>
             <div className="flex-1 space-y-2">
               {pieData.map((item, index) => (
@@ -493,24 +474,8 @@ export default function AssetsClient({ initialAssets, cashBalance }: AssetsClien
 
                     {/* Mini Line Chart */}
                     <div className="mt-auto h-10 w-full opacity-50 group-hover:opacity-100 transition-opacity">
-                      {!isMounted ? (
-                        <div className="w-full h-full" />
-                      ) : (
-                        // @ts-ignore
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={chartData}>
-                          <Line 
-                            type="monotone" 
-                            dataKey="value" 
-                            stroke={isProfitable ? '#10B981' : '#F43F5E'} 
-                            strokeWidth={2} 
-                            dot={false}
-                            isAnimationActive={false}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
+                      <AssetLineChart chartData={chartData} isProfitable={isProfitable} />
+                    </div>
 
                     <div className="mt-2 pt-2 border-t border-[var(--border)] flex justify-between items-center text-[10px] text-foreground/40">
                       <span>Cập nhật: {new Date(asset.updated_at).toLocaleDateString('vi-VN')}</span>
